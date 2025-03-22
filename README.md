@@ -4,6 +4,8 @@ Tap is a command-line tool designed to help you quickly access links and resourc
 
 Wait you don't use the Internet and still prefer to store everything locally? That's cool too, Tap also support file navigation. Pick up right where you left off with the ease of one command, for example: `tap documents expense-report`.
 
+_DISCLAIMER: Tap is a work in progress and is under active development. Not all features listed below are available at this time. See the full [roadmap here](./ROADMAP.md) for what is implemented so far. If you do test this out and find bugs/issues, please add an issue to the repository. Thank you!_
+
 ## Key Features
 
 - **Context-Aware Commands**
