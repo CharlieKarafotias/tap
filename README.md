@@ -38,7 +38,7 @@ _DISCLAIMER: Tap is a work in progress and is under active development. Not all 
   - So your a programmer that wants to generate your own file of links into Tap? That's awesome, and also supported using YAML syntax. Below makes one new parent-entity called `tmgr` with a `repository` link (feel free to check out `tmgr` if your looking to manage tasks using a CLI!)
     ```yaml
     - tmgr:
-      repository: https://github.com/CharlieKarafotias/tmgr/tree/main
+        repository: https://github.com/CharlieKarafotias/tmgr/tree/main
     ``` 
 - **Easily Migrate To A Browser Bookmark Manager**
   - So you have moved on from the terminal. That's okay, Tap can compile all your links down to a file for a quick exit.
