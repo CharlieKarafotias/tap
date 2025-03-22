@@ -56,7 +56,7 @@ Given the features provided by `tap` out of the box, some key words must be rese
 
 Reserved List:
 - `here`
-- `update`
+- Parent entities can't start with `-`. This is because all `tap` commands like `list` or `update` start with `-` or `--` to distinguish them
 
 ### How Does This Affect Me?
 
