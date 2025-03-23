@@ -20,9 +20,7 @@ pub fn run(args: Vec<String>) -> Result<String, String> {
             "--update" => Ok("TODO: Implement update functionality".to_string()),
             "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
             "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
-            // TODO: Import needs a src file
             "--import" => parse_args_import(&args[1..]),
-            // TODO: Export needs a destination folder
             "--export" => parse_args_export(&args[1..]),
             // Adding, Updating, and Deleting Links:
             "-a" | "--add" => parse_args_add(&args[1..]),
@@ -80,20 +78,18 @@ fn display_upsert_help() -> String {
 }
 
 fn display_import_help() -> String {
-    // TODO: Export needs a src file
     format!(
         "Tap import command will import a bookmark file from one of the following browsers into Tap:\n{}\n\nExample Usage: {}",
         "Chrome, Edge, Firefox, Opera, Safari, Tap",
-        "tap --import [Chrome | Edge | Firefox | Opera | Safari | Tap]"
+        "tap --import [Chrome | Edge | Firefox | Opera | Safari | Tap] <bookmark file>"
     )
 }
 
 fn display_export_help() -> String {
-    // TODO: Export needs a destination folder
     format!(
         "Tap export command will export a bookmark file to one of the following browsers:\n{}\n\nExample Usage: {}",
         "Chrome, Edge, Firefox, Opera, Safari, Tap",
-        "tap --export [Chrome | Edge | Firefox | Opera | Safari | Tap]"
+        "tap --export [Chrome | Edge | Firefox | Opera | Safari | Tap] <destination folder>"
     )
 }
 
@@ -169,39 +165,61 @@ fn parse_args_parent_entity(args: &[String]) -> Result<String, String> {
 }
 
 fn parse_args_import(args: &[String]) -> Result<String, String> {
-    let err = "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
-        .to_string();
+    let err = "expected 2 arguments - see 'tap --import --help' for more information.".to_string();
     let help = display_import_help();
-    if args.len() != 1 {
+    if args.len() == 1 && args[0] == "--help" {
+        return Ok(help);
+    }
+    if args.len() != 2 {
         return Err(err);
     }
-    match args[0].as_str() {
-        "Chrome" => Ok("TODO: Implement import functionality from Chrome".to_string()),
-        "Edge" => Ok("TODO: Implement import functionality from Edge".to_string()),
-        "Firefox" => Ok("TODO: Implement import functionality from Firefox".to_string()),
-        "Opera" => Ok("TODO: Implement import functionality from Opera".to_string()),
-        "Safari" => Ok("TODO: Implement import functionality from Safari".to_string()),
-        "Tap" => Ok("TODO: Implement import functionality from Tap".to_string()),
-        "--help" => Ok(help),
+    match (args[0].as_str(), args[1].as_str()) {
+        ("Chrome", f) => Ok(format!(
+            "TODO: Implement import functionality from Chrome: {f}"
+        )),
+        ("Edge", f) => Ok(format!(
+            "TODO: Implement import functionality from Edge: {f}"
+        )),
+        ("Firefox", f) => Ok(format!(
+            "TODO: Implement import functionality from Firefox: {f}"
+        )),
+        ("Opera", f) => Ok(format!(
+            "TODO: Implement import functionality from Opera: {f}"
+        )),
+        ("Safari", f) => Ok(format!(
+            "TODO: Implement import functionality from Safari: {f}"
+        )),
+        ("Tap", f) => Ok(format!(
+            "TODO: Implement import functionality from Tap: {f}"
+        )),
         _ => Err(err),
     }
 }
 
 fn parse_args_export(args: &[String]) -> Result<String, String> {
-    let err = "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
-        .to_string();
+    let err = "expected 2 arguments - see 'tap --export --help' for more information.".to_string();
     let help = display_export_help();
-    if args.len() != 1 {
+    if args.len() == 1 && args[0] == "--help" {
+        return Ok(help);
+    }
+    if args.len() != 2 {
         return Err(err);
     }
-    match args[0].as_str() {
-        "Chrome" => Ok("TODO: Implement export functionality to Chrome".to_string()),
-        "Edge" => Ok("TODO: Implement export functionality to Edge".to_string()),
-        "Firefox" => Ok("TODO: Implement export functionality to Firefox".to_string()),
-        "Opera" => Ok("TODO: Implement export functionality to Opera".to_string()),
-        "Safari" => Ok("TODO: Implement export functionality to Safari".to_string()),
-        "Tap" => Ok("TODO: Implement export functionality to Tap".to_string()),
-        "--help" => Ok(help),
+    match (args[0].as_str(), args[1].as_str()) {
+        ("Chrome", f) => Ok(format!(
+            "TODO: Implement export functionality to Chrome: {f}"
+        )),
+        ("Edge", f) => Ok(format!("TODO: Implement export functionality to Edge: {f}")),
+        ("Firefox", f) => Ok(format!(
+            "TODO: Implement export functionality to Firefox: {f}"
+        )),
+        ("Opera", f) => Ok(format!(
+            "TODO: Implement export functionality to Opera: {f}"
+        )),
+        ("Safari", f) => Ok(format!(
+            "TODO: Implement export functionality to Safari: {f}"
+        )),
+        ("Tap", f) => Ok(format!("TODO: Implement export functionality to Tap: {f}")),
         _ => Err(err),
     }
 }
@@ -778,8 +796,7 @@ mod tests {
     fn test_import_error() {
         let args = vec!["--import"].iter().map(|s| s.to_string()).collect();
         let expected =
-            "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
-                .to_string();
+            "expected 2 arguments - see 'tap --import --help' for more information.".to_string();
         let res = run(args);
         assert_eq!(res.unwrap_err(), expected);
     }
@@ -797,66 +814,66 @@ mod tests {
 
     #[test]
     fn test_import_chrome() {
-        let args = vec!["--import", "Chrome"]
+        let args = vec!["--import", "Chrome", "./test.json"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement import functionality from Chrome".to_string();
+        let expected = "TODO: Implement import functionality from Chrome: ./test.json".to_string();
         let res = run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_edge() {
-        let args = vec!["--import", "Edge"]
+        let args = vec!["--import", "Edge", "./test.json"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement import functionality from Edge".to_string();
+        let expected = "TODO: Implement import functionality from Edge: ./test.json".to_string();
         let res = run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_firefox() {
-        let args = vec!["--import", "Firefox"]
+        let args = vec!["--import", "Firefox", "./test.json"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement import functionality from Firefox".to_string();
+        let expected = "TODO: Implement import functionality from Firefox: ./test.json".to_string();
         let res = run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_opera() {
-        let args = vec!["--import", "Opera"]
+        let args = vec!["--import", "Opera", "./test.json"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement import functionality from Opera".to_string();
+        let expected = "TODO: Implement import functionality from Opera: ./test.json".to_string();
         let res = run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_safari() {
-        let args = vec!["--import", "Safari"]
+        let args = vec!["--import", "Safari", "./test.json"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement import functionality from Safari".to_string();
+        let expected = "TODO: Implement import functionality from Safari: ./test.json".to_string();
         let res = run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_tap() {
-        let args = vec!["--import", "Tap"]
+        let args = vec!["--import", "Tap", "./test.tap"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement import functionality from Tap".to_string();
+        let expected = "TODO: Implement import functionality from Tap: ./test.tap".to_string();
         let res = run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
@@ -865,8 +882,7 @@ mod tests {
     fn test_export_error() {
         let args = vec!["--export"].iter().map(|s| s.to_string()).collect();
         let expected =
-            "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
-                .to_string();
+            "expected 2 arguments - see 'tap --export --help' for more information.".to_string();
         let res = run(args);
         assert_eq!(res.unwrap_err(), expected);
     }
@@ -884,66 +900,66 @@ mod tests {
 
     #[test]
     fn test_export_chrome() {
-        let args = vec!["--export", "Chrome"]
+        let args = vec!["--export", "Chrome", "./Desktop"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement export functionality to Chrome".to_string();
+        let expected = "TODO: Implement export functionality to Chrome: ./Desktop".to_string();
         let res = run(args).expect("Could not display export");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_export_edge() {
-        let args = vec!["--export", "Edge"]
+        let args = vec!["--export", "Edge", "./Desktop"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement export functionality to Edge".to_string();
+        let expected = "TODO: Implement export functionality to Edge: ./Desktop".to_string();
         let res = run(args).expect("Could not display export");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_export_firefox() {
-        let args = vec!["--export", "Firefox"]
+        let args = vec!["--export", "Firefox", "./Desktop"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement export functionality to Firefox".to_string();
+        let expected = "TODO: Implement export functionality to Firefox: ./Desktop".to_string();
         let res = run(args).expect("Could not display export");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_export_opera() {
-        let args = vec!["--export", "Opera"]
+        let args = vec!["--export", "Opera", "./Desktop"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement export functionality to Opera".to_string();
+        let expected = "TODO: Implement export functionality to Opera: ./Desktop".to_string();
         let res = run(args).expect("Could not display export");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_export_safari() {
-        let args = vec!["--export", "Safari"]
+        let args = vec!["--export", "Safari", "./Desktop"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement export functionality to Safari".to_string();
+        let expected = "TODO: Implement export functionality to Safari: ./Desktop".to_string();
         let res = run(args).expect("Could not display export");
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_export_tap() {
-        let args = vec!["--export", "Tap"]
+        let args = vec!["--export", "Tap", "./Desktop"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = "TODO: Implement export functionality to Tap".to_string();
+        let expected = "TODO: Implement export functionality to Tap: ./Desktop".to_string();
         let res = run(args).expect("Could not display export");
         assert_eq!(res, expected);
     }
