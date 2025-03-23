@@ -49,6 +49,36 @@ fn display_help() -> String {
     )
 }
 
+fn display_add_help() -> String {
+    format!(
+        "Tap --add command will add a new link to the Parent Entity\n\nExample Usage: {}",
+        "tap --add search-engines google https://google.com"
+    )
+}
+
+fn display_delete_help() -> String {
+    format!(
+        "Tap --delete command will delete either a specific link or all links of a Parent Entity\n\nExample Usage: {}\n{}",
+        "Delete all links: tap --delete search-engines",
+        "Delete specific link: tap --delete search-engines google"
+    )
+}
+
+fn display_show_help() -> String {
+    format!(
+        "Tap --show command will show either a specific link or all links of a Parent Entity\n\nExample Usage: {}\n{}",
+        "Show all links: tap --show search-engines",
+        "Show specific link: tap --show search-engines google"
+    )
+}
+
+fn display_upsert_help() -> String {
+    format!(
+        "Tap --upsert command will add/update a new/existing link to the Parent Entity\n\nExample Usage: {}",
+        "tap --upsert search-engines google https://google.com"
+    )
+}
+
 fn display_import_help() -> String {
     // TODO: Export needs a src file
     format!(
@@ -165,8 +195,13 @@ fn parse_args_export(args: &[String]) -> Result<String, String> {
 }
 
 fn parse_args_add(args: &[String]) -> Result<String, String> {
+    let err = "expected 3 arguments - a Parent Entity, a Link Name, and a Value".to_string();
+    let help = display_add_help();
+    if args.len() == 1 && args[0].as_str() == "--help" {
+        return Ok(help);
+    }
     if args.len() != 3 {
-        todo!("Help for add");
+        return Err(err);
     }
     match args[0].as_str() {
         "here" => Ok(format!(
@@ -181,10 +216,13 @@ fn parse_args_add(args: &[String]) -> Result<String, String> {
 }
 
 fn parse_args_delete(args: &[String]) -> Result<String, String> {
+    let err = "expected 1 or 2 arguments - a Parent Entity and optionally a Link Name".to_string();
+    let help = display_delete_help();
     if args.len() != 1 && args.len() != 2 {
-        todo!("Help for delete");
+        return Err(err);
     }
     match args[0].as_str() {
+        "--help" => Ok(help),
         "here" => {
             if args.len() == 2 {
                 Ok(format!(
@@ -212,10 +250,13 @@ fn parse_args_delete(args: &[String]) -> Result<String, String> {
 }
 
 fn parse_args_show(args: &[String]) -> Result<String, String> {
+    let err = "expected 1 or 2 arguments - a Parent Entity and optionally a Link Name".to_string();
+    let help = display_show_help();
     if args.len() != 1 && args.len() != 2 {
-        todo!("Help for show");
+        return Err(err);
     }
     match args[0].as_str() {
+        "--help" => Ok(help),
         "here" => {
             if args.len() == 2 {
                 Ok(format!(
@@ -243,10 +284,16 @@ fn parse_args_show(args: &[String]) -> Result<String, String> {
 }
 
 fn parse_args_upsert(args: &[String]) -> Result<String, String> {
+    let err = "expected 3 arguments - a Parent Entity, a Link Name, and a Value".to_string();
+    let help = display_upsert_help();
+    if args.len() == 1 && args[0].as_str() == "--help" {
+        return Ok(help);
+    }
     if args.len() != 3 {
-        todo!("Help for upsert");
+        return Err(err);
     }
     match args[0].as_str() {
+        "--help" => Ok(help),
         "here" => Ok(format!(
             "TODO: Implement upsert functionality for here with Link Name {} and Value {}",
             args[1], args[2]
@@ -322,6 +369,27 @@ mod tests {
     }
 
     // Adding, Updating, and Deleting Links Tests:
+
+    #[test]
+    fn test_add_error() {
+        let args = vec!["--add"].iter().map(|s| s.to_string()).collect();
+        let expected =
+            "expected 3 arguments - a Parent Entity, a Link Name, and a Value".to_string();
+        let res = run(args);
+        assert_eq!(res.unwrap_err(), expected);
+    }
+
+    #[test]
+    fn test_add_help() {
+        let args = vec!["--add", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_add_help();
+        let res = run(args).expect("Could not display add help");
+        assert_eq!(res, expected);
+    }
+
     #[test]
     fn test_add_link_short_parent_entity() {
         let args = vec!["-a", "my-repo", "my-link", "https://google.com"]
@@ -363,6 +431,26 @@ mod tests {
             .collect();
         let expected = "TODO: Implement add functionality for here with Link Name my-link and Value https://google.com".to_string();
         let res = run(args).expect("Could not display add");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_delete_error() {
+        let args = vec!["--delete"].iter().map(|s| s.to_string()).collect();
+        let expected =
+            "expected 1 or 2 arguments - a Parent Entity and optionally a Link Name".to_string();
+        let res = run(args);
+        assert_eq!(res.unwrap_err(), expected);
+    }
+
+    #[test]
+    fn test_delete_help() {
+        let args = vec!["--delete", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_delete_help();
+        let res = run(args).expect("Could not display delete help");
         assert_eq!(res, expected);
     }
 
@@ -460,6 +548,26 @@ mod tests {
     }
 
     #[test]
+    fn test_show_error() {
+        let args = vec!["--show"].iter().map(|s| s.to_string()).collect();
+        let expected =
+            "expected 1 or 2 arguments - a Parent Entity and optionally a Link Name".to_string();
+        let res = run(args);
+        assert_eq!(res.unwrap_err(), expected);
+    }
+
+    #[test]
+    fn test_show_help() {
+        let args = vec!["--show", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_show_help();
+        let res = run(args).expect("Could not display show help");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
     fn test_show_link_short_parent_entity_no_link() {
         let args = vec!["-s", "my-repo"]
             .iter()
@@ -547,6 +655,26 @@ mod tests {
         let expected =
             "TODO: Implement show functionality for here with Link Name my-link".to_string();
         let res = run(args).expect("Could not display show");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_upsert_error() {
+        let args = vec!["--upsert"].iter().map(|s| s.to_string()).collect();
+        let expected =
+            "expected 3 arguments - a Parent Entity, a Link Name, and a Value".to_string();
+        let res = run(args);
+        assert_eq!(res.unwrap_err(), expected);
+    }
+
+    #[test]
+    fn test_upsert_help() {
+        let args = vec!["--upsert", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_upsert_help();
+        let res = run(args).expect("Could not display upsert help");
         assert_eq!(res, expected);
     }
 
