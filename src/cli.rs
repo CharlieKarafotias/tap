@@ -10,128 +10,27 @@ pub fn parse_args() -> Vec<String> {
 }
 
 pub fn run(args: Vec<String>) -> Result<String, String> {
-    // TODO: Redo by command name instead for 1+ args
     match args.len() {
         0 => Ok(display_help()),
-        1 => {
-            match args[0].as_str() {
-                // General:
-                "--help" => Ok(display_help()),
-                "-v" | "--version" => Ok(display_version()),
-                // Utilities:
-                "--update" => Ok("TODO: Implement update functionality".to_string()),
-                "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
-                "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
-                // Opening links:
-                "here" => Ok("TODO: Implement here functionality".to_string()),
-                parent_entity => Ok(format!(
-                    "TODO: Implement open functionality for Parent Entity: {}",
-                    parent_entity
-                )),
-            }
-        }
-        2 => {
-            match args[0].as_str() {
-                // Utilities
-                "--import" => match args[1].as_str() {
-                    "Chrome" => Ok("TODO: Implement import functionality from Chrome".to_string()),
-                    "Edge" => Ok("TODO: Implement import functionality from Edge".to_string()),
-                    "Firefox" => {
-                        Ok("TODO: Implement import functionality from Firefox".to_string())
-                    }
-                    "Opera" => Ok("TODO: Implement import functionality from Opera".to_string()),
-                    "Safari" => Ok("TODO: Implement import functionality from Safari".to_string()),
-                    "Tap" => Ok("TODO: Implement import functionality from Tap".to_string()),
-                    _ => Err(display_error()),
-                },
-                "--export" => match args[1].as_str() {
-                    "Chrome" => Ok("TODO: Implement export functionality to Chrome".to_string()),
-                    "Edge" => Ok("TODO: Implement export functionality to Edge".to_string()),
-                    "Firefox" => Ok("TODO: Implement export functionality to Firefox".to_string()),
-                    "Opera" => Ok("TODO: Implement export functionality to Opera".to_string()),
-                    "Safari" => Ok("TODO: Implement export functionality to Safari".to_string()),
-                    "Tap" => Ok("TODO: Implement export functionality to Tap".to_string()),
-                    _ => Err(display_error()),
-                },
-                // Adding, Updating, and Deleting links:
-                "-d" | "--delete" => match args[1].as_str() {
-                    "here" => Ok("TODO: Implement delete functionality for here".to_string()),
-                    parent_entity => Ok(format!(
-                        "TODO: Implement delete functionality for Parent Entity: {}",
-                        parent_entity
-                    )),
-                },
-                "-s" | "--show" => match args[1].as_str() {
-                    "here" => Ok("TODO: Implement show functionality for here".to_string()),
-                    parent_entity => Ok(format!(
-                        "TODO: Implement show functionality for Parent Entity: {}",
-                        parent_entity
-                    )),
-                },
-                // Opening links:
-                "here" => Ok(format!(
-                    "TODO: Implement open functionality for here with Link Name {}",
-                    args[1]
-                )),
-                parent_entity => Ok(format!(
-                    "TODO: Implement open functionality for Parent Entity {} with Link Name {}",
-                    parent_entity, args[1]
-                )),
-            }
-        }
-        3 => {
-            match args[0].as_str() {
-                // Adding, Updating, and Deleting links:
-                "-d" | "--delete" => match args[1].as_str() {
-                    "here" => Ok(format!(
-                        "TODO: Implement delete functionality for here with Link Name {}",
-                        args[2]
-                    )),
-                    parent_entity => Ok(format!(
-                        "TODO: Implement delete functionality for Parent Entity {} with Link Name {}",
-                        parent_entity, args[2]
-                    )),
-                },
-                "-s" | "--show" => match args[1].as_str() {
-                    "here" => Ok(format!(
-                        "TODO: Implement show functionality for here with Link Name {}",
-                        args[2]
-                    )),
-                    parent_entity => Ok(format!(
-                        "TODO: Implement show functionality for Parent Entity {} with Link Name {}",
-                        parent_entity, args[2]
-                    )),
-                },
-                _ => Err(display_error()),
-            }
-        }
-        4 => {
-            match args[0].as_str() {
-                // Adding, Updating, and Deleting links:
-                "-a" | "--add" => match args[1].as_str() {
-                    "here" => Ok(format!(
-                        "TODO: Implement add functionality for here with Link Name {} and Value {}",
-                        args[2], args[3]
-                    )),
-                    parent_entity => Ok(format!(
-                        "TODO: Implement add functionality for Parent Entity {} with Link Name {} and Value {}",
-                        parent_entity, args[2], args[3]
-                    )),
-                },
-                "-u" | "--upsert" => match args[1].as_str() {
-                    "here" => Ok(format!(
-                        "TODO: Implement upsert functionality for here with Link Name {} and Value {}",
-                        args[2], args[3]
-                    )),
-                    parent_entity => Ok(format!(
-                        "TODO: Implement upsert functionality for Parent Entity {} with Link Name {} and Value {}",
-                        parent_entity, args[2], args[3]
-                    )),
-                },
-                _ => Err(display_error()),
-            }
-        }
-        _ => Err(display_error()),
+        _ => match args[0].as_str() {
+            // General:
+            "--help" => Ok(display_help()),
+            "-v" | "--version" => Ok(display_version()),
+            // Utilities:
+            "--update" => Ok("TODO: Implement update functionality".to_string()),
+            "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
+            "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
+            "--import" => parse_args_import(&args[1..]),
+            "--export" => parse_args_export(&args[1..]),
+            // Adding, Updating, and Deleting Links:
+            "-a" | "--add" => parse_args_add(&args[1..]),
+            "-d" | "--delete" => parse_args_delete(&args[1..]),
+            "-s" | "--show" => parse_args_show(&args[1..]),
+            "-u" | "--upsert" => parse_args_upsert(&args[1..]),
+            // Opening links:
+            "here" => parse_args_here(&args[1..]),
+            _parent_entity => parse_args_parent_entity(&args),
+        },
     }
 }
 
@@ -174,6 +73,161 @@ fn display_commands() -> String {
     s.push_str(" - tap --help                                                          Display this help message\n");
     s.push_str(" - tap (-v, --version)                                                 Display the version\n");
     s
+}
+
+fn parse_args_here(args: &[String]) -> Result<String, String> {
+    if !args.is_empty() && args.len() != 1 {
+        todo!("Help for here");
+    }
+    if args.len() == 1 {
+        Ok(format!(
+            "TODO: Implement open functionality for here with Link Name {}",
+            args[0]
+        ))
+    } else {
+        Ok("TODO: Implement here functionality".to_string())
+    }
+}
+
+fn parse_args_parent_entity(args: &[String]) -> Result<String, String> {
+    if args.len() != 1 && args.len() != 2 {
+        return Err(display_error());
+    }
+    if args.len() == 2 {
+        Ok(format!(
+            "TODO: Implement open functionality for Parent Entity {} with Link Name {}",
+            args[0], args[1]
+        ))
+    } else {
+        Ok(format!(
+            "TODO: Implement open functionality for Parent Entity: {}",
+            args[0]
+        ))
+    }
+}
+
+fn parse_args_import(args: &[String]) -> Result<String, String> {
+    if args.len() != 1 {
+        todo!("Help for import");
+    }
+    match args[0].as_str() {
+        "Chrome" => Ok("TODO: Implement import functionality from Chrome".to_string()),
+        "Edge" => Ok("TODO: Implement import functionality from Edge".to_string()),
+        "Firefox" => Ok("TODO: Implement import functionality from Firefox".to_string()),
+        "Opera" => Ok("TODO: Implement import functionality from Opera".to_string()),
+        "Safari" => Ok("TODO: Implement import functionality from Safari".to_string()),
+        "Tap" => Ok("TODO: Implement import functionality from Tap".to_string()),
+        _ => Err("Invalid import type. See tap --import --help for more information".to_string()), // TODO: once help for import added, update here
+    }
+}
+
+fn parse_args_export(args: &[String]) -> Result<String, String> {
+    if args.len() != 1 {
+        todo!("Help for export");
+    }
+    match args[0].as_str() {
+        "Chrome" => Ok("TODO: Implement export functionality to Chrome".to_string()),
+        "Edge" => Ok("TODO: Implement export functionality to Edge".to_string()),
+        "Firefox" => Ok("TODO: Implement export functionality to Firefox".to_string()),
+        "Opera" => Ok("TODO: Implement export functionality to Opera".to_string()),
+        "Safari" => Ok("TODO: Implement export functionality to Safari".to_string()),
+        "Tap" => Ok("TODO: Implement export functionality to Tap".to_string()),
+        _ => Err("Invalid export type. See tap --export --help for more information".to_string()), // TODO: once help for export added, update here
+    }
+}
+
+fn parse_args_add(args: &[String]) -> Result<String, String> {
+    if args.len() != 3 {
+        todo!("Help for add");
+    }
+    match args[0].as_str() {
+        "here" => Ok(format!(
+            "TODO: Implement add functionality for here with Link Name {} and Value {}",
+            args[1], args[2]
+        )),
+        parent_entity => Ok(format!(
+            "TODO: Implement add functionality for Parent Entity {} with Link Name {} and Value {}",
+            parent_entity, args[1], args[2]
+        )),
+    }
+}
+
+fn parse_args_delete(args: &[String]) -> Result<String, String> {
+    if args.len() != 1 && args.len() != 2 {
+        todo!("Help for delete");
+    }
+    match args[0].as_str() {
+        "here" => {
+            if args.len() == 2 {
+                Ok(format!(
+                    "TODO: Implement delete functionality for here with Link Name {}",
+                    args[1]
+                ))
+            } else {
+                Ok("TODO: Implement delete functionality for here".to_string())
+            }
+        }
+        parent_entity => {
+            if args.len() == 2 {
+                Ok(format!(
+                    "TODO: Implement delete functionality for Parent Entity {} with Link Name {}",
+                    parent_entity, args[1]
+                ))
+            } else {
+                Ok(format!(
+                    "TODO: Implement delete functionality for Parent Entity: {}",
+                    parent_entity
+                ))
+            }
+        }
+    }
+}
+
+fn parse_args_show(args: &[String]) -> Result<String, String> {
+    if args.len() != 1 && args.len() != 2 {
+        todo!("Help for show");
+    }
+    match args[0].as_str() {
+        "here" => {
+            if args.len() == 2 {
+                Ok(format!(
+                    "TODO: Implement show functionality for here with Link Name {}",
+                    args[1]
+                ))
+            } else {
+                Ok("TODO: Implement show functionality for here".to_string())
+            }
+        }
+        parent_entity => {
+            if args.len() == 2 {
+                Ok(format!(
+                    "TODO: Implement show functionality for Parent Entity {} with Link Name {}",
+                    parent_entity, args[1]
+                ))
+            } else {
+                Ok(format!(
+                    "TODO: Implement show functionality for Parent Entity: {}",
+                    parent_entity
+                ))
+            }
+        }
+    }
+}
+
+fn parse_args_upsert(args: &[String]) -> Result<String, String> {
+    if args.len() != 3 {
+        todo!("Help for upsert");
+    }
+    match args[0].as_str() {
+        "here" => Ok(format!(
+            "TODO: Implement upsert functionality for here with Link Name {} and Value {}",
+            args[1], args[2]
+        )),
+        parent_entity => Ok(format!(
+            "TODO: Implement upsert functionality for Parent Entity {} with Link Name {} and Value {}",
+            parent_entity, args[1], args[2]
+        )),
+    }
 }
 
 #[cfg(test)]
