@@ -4,11 +4,11 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 
 ## Phase 1: Project Initialization
 
-- [ ] Set up the project repository
-- [ ] Initialize Rust project with Cargo
-- [ ] Set up SurrealDB database
+- [x] Set up the project repository
+- [x] Initialize Rust project with Cargo
+- [x] Set up SurrealDB database
 - [ ] Define initial data schema for storing entities and links
-- [ ] Implement basic CLI structure using Clap for argument parsing
+- [x] Implement basic CLI structure using Clap for argument parsing
 
 ## Phase 2: CRUD Operations for Entities and Links
 

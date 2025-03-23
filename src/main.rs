@@ -1,5 +1,7 @@
+mod cli;
 mod db;
 
+use cli::run;
 use tokio::runtime::Builder;
 
 fn main() {
@@ -9,9 +11,6 @@ fn main() {
         .build()
         .unwrap()
         .block_on(async {
-            // TODO: Make run function for parse args with clap
-            // TODO: Make run function for consuming args
-            // TODO: Make run function for returning results
-            todo!("Implement run functions")
+            run();
         })
 }
