@@ -97,6 +97,13 @@ fn display_export_help() -> String {
     )
 }
 
+fn display_here_help() -> String {
+    format!(
+        "Tap here command will use your current working directory as the Parent Entity and will open either all or a specific link\n\nExample Usage: {}\n{}",
+        "Open all links: tap here", "Open specific link: tap here google"
+    )
+}
+
 fn display_version() -> String {
     format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
 }
@@ -126,10 +133,15 @@ fn display_commands() -> String {
 }
 
 fn parse_args_here(args: &[String]) -> Result<String, String> {
+    let err = "expected 0 or 1 arguments - see 'tap here --help' for more information".to_string();
+    let help = display_here_help();
     if !args.is_empty() && args.len() != 1 {
-        todo!("Help for here");
+        return Err(err);
     }
     if args.len() == 1 {
+        if args[0] == "--help" {
+            return Ok(help);
+        }
         Ok(format!(
             "TODO: Implement open functionality for here with Link Name {}",
             args[0]
@@ -345,6 +357,29 @@ mod tests {
             "TODO: Implement open functionality for Parent Entity my-repo with Link Name my-link"
                 .to_string();
         let res = run(args).expect("Could not display open");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_current_directory_help() {
+        let args = vec!["here", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_here_help();
+        let res = run(args).expect("Could not display here help");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_current_directory_error() {
+        let args = vec!["here", "some", "error"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected =
+            "expected 0 or 1 arguments - see 'tap here --help' for more information".to_string();
+        let res = run(args).expect_err("Could not display here error");
         assert_eq!(res, expected);
     }
 
