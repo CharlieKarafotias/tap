@@ -62,3 +62,16 @@ Reserved List:
 
 It most likely won't! The only way reserved words will affect you is if you attempt to create a new parent entity using one of the reserved key words. In the case you accidently do, an error will be raised, allowing you to edit your name.
 
+## Developer Documentation
+
+### Project Setup
+
+1. Install Rust on your computer. For instructions on installing Rust, see the [Rust installation guide](https://www.rust-lang.org/tools/install).
+2. Pull the [tap repository](https://github.com/CharlieKarafotias/tap).
+3. Run `cargo run`. This should compile tap and then return all the commands that are available for the program.
+4. To build an optimized release of the project, run `cargo build -r`
+5. Before opening a pull request: 
+   1. Reach out to Charlie to pick up an issue in project backlog.
+   2. Make your changes according to the backlog issue.
+   3. Add unit tests and ensure all tests are passing and no new linting issues are introduced. 
+   4. Ensure you have installed [pre-commit](https://pre-commit.com/#install) on your computer. Once installed, run the command `pre-commit install` to add the pre-commit hooks. 
