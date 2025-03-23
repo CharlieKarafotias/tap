@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+surrealdb = { version = "2.2.1", features = ["allocator", "kv-mem", "kv-surrealkv"] }
+tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+lto = true
+strip = true
+opt-level = 3
+panic = 'abort'
+codegen-units = 1
