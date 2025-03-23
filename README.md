@@ -25,7 +25,7 @@ _DISCLAIMER: Tap is a work in progress and is under active development. Not all 
       - Are you that student that always loses the link to that one paper that was perfect for your research paper? Let Tap remember for you, so you can focus on getting that A+ instead: `tap documents resource-1`
       - Did you forget about that quiz due at 11:59 pm? Me too! Let Tap quickly get you to the online portal to finish your quiz: `tap university canvas`
 - **CRUD Operation Support**
-  - Easily add, update, remove, or list your parent entities and associated links via our CLI command `tap -l` or `tap --list`
+  - Easily add, update, remove, or list your parent entities and associated links via the CLI command `tap -s <Parent Entity>`
   - Prefer a UI... Tap has an interactive terminal user interface as well `tap --tui` 
 - **Auto-Completion**
   - What CLI doesn't have auto complete these days? With Tap, the goal is to get you where you want to go fast. Tap dynamically generates auto-complete suggestions whenever you hit tab, it's that simple!

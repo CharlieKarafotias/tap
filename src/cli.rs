@@ -6,9 +6,7 @@ fn parse_args() -> Vec<String> {
 
 pub fn run() {
     let args = parse_args();
-    println!("Parsed args: {:#?}", args);
-    // Side effects
-    // match by len
+    // Parse args and run proper command:
     let res = match args.len() {
         0 => display_help(),
         1 => {
@@ -18,6 +16,7 @@ pub fn run() {
                 "-v" | "--version" => display_version(),
                 // Utilities:
                 "--update" => "TODO: Implement update functionality".to_string(),
+                "--tui" => "TODO: Implement TUI functionality".to_string(),
                 "-i" | "--init" => "TODO: Implement init functionality".to_string(),
                 // Opening links:
                 "here" => "TODO: Implement here functionality".to_string(),
@@ -128,9 +127,8 @@ pub fn run() {
         }
         _ => display_error(),
     };
-
+    // Return the result
     println!("{}", res);
-    // Return behavior
 }
 
 fn display_error() -> String {
@@ -165,6 +163,7 @@ fn display_commands() -> String {
     s.push_str("   - tap (-i, --init)                                                  Initializes Tap (Shell Auto-Completion, etc.)\n");
     s.push_str("   - tap --import     <Browser | Tap>                                  Imports a bookmark file into Tap. Supports both Tap Files and the following browsers' bookmark manager files: Chrome, Edge, Firefox, Opera, Safari\n");
     s.push_str("   - tap --export     <Browser | Tap>                                  Exports Tap to a bookmark file. Supported Browsers: Chrome, Edge, Firefox, Opera, Safari\n");
+    s.push_str("   - tap --tui                                                         Opens a terminal user interface to facilitate adding, updating, and deleting links\n");
     s.push_str(
         "   - tap --update                                                      Updates Tap\n",
     );
