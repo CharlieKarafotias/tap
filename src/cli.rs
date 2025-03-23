@@ -20,7 +20,9 @@ pub fn run(args: Vec<String>) -> Result<String, String> {
             "--update" => Ok("TODO: Implement update functionality".to_string()),
             "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
             "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
+            // TODO: Import needs a src file
             "--import" => parse_args_import(&args[1..]),
+            // TODO: Export needs a destination folder
             "--export" => parse_args_export(&args[1..]),
             // Adding, Updating, and Deleting Links:
             "-a" | "--add" => parse_args_add(&args[1..]),
@@ -44,6 +46,24 @@ fn display_help() -> String {
         display_version(),
         env!("CARGO_PKG_DESCRIPTION"),
         display_commands(),
+    )
+}
+
+fn display_import_help() -> String {
+    // TODO: Export needs a src file
+    format!(
+        "Tap import command will import a bookmark file from one of the following browsers into Tap:\n{}\n\nExample Usage: {}",
+        "Chrome, Edge, Firefox, Opera, Safari, Tap",
+        "tap --import [Chrome | Edge | Firefox | Opera | Safari | Tap]"
+    )
+}
+
+fn display_export_help() -> String {
+    // TODO: Export needs a destination folder
+    format!(
+        "Tap export command will export a bookmark file to one of the following browsers:\n{}\n\nExample Usage: {}",
+        "Chrome, Edge, Firefox, Opera, Safari, Tap",
+        "tap --export [Chrome | Edge | Firefox | Opera | Safari | Tap]"
     )
 }
 
@@ -107,8 +127,11 @@ fn parse_args_parent_entity(args: &[String]) -> Result<String, String> {
 }
 
 fn parse_args_import(args: &[String]) -> Result<String, String> {
+    let err = "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
+        .to_string();
+    let help = display_import_help();
     if args.len() != 1 {
-        todo!("Help for import");
+        return Err(err);
     }
     match args[0].as_str() {
         "Chrome" => Ok("TODO: Implement import functionality from Chrome".to_string()),
@@ -117,13 +140,17 @@ fn parse_args_import(args: &[String]) -> Result<String, String> {
         "Opera" => Ok("TODO: Implement import functionality from Opera".to_string()),
         "Safari" => Ok("TODO: Implement import functionality from Safari".to_string()),
         "Tap" => Ok("TODO: Implement import functionality from Tap".to_string()),
-        _ => Err("Invalid import type. See tap --import --help for more information".to_string()), // TODO: once help for import added, update here
+        "--help" => Ok(help),
+        _ => Err(err),
     }
 }
 
 fn parse_args_export(args: &[String]) -> Result<String, String> {
+    let err = "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
+        .to_string();
+    let help = display_export_help();
     if args.len() != 1 {
-        todo!("Help for export");
+        return Err(err);
     }
     match args[0].as_str() {
         "Chrome" => Ok("TODO: Implement export functionality to Chrome".to_string()),
@@ -132,7 +159,8 @@ fn parse_args_export(args: &[String]) -> Result<String, String> {
         "Opera" => Ok("TODO: Implement export functionality to Opera".to_string()),
         "Safari" => Ok("TODO: Implement export functionality to Safari".to_string()),
         "Tap" => Ok("TODO: Implement export functionality to Tap".to_string()),
-        _ => Err("Invalid export type. See tap --export --help for more information".to_string()), // TODO: once help for export added, update here
+        "--help" => Ok(help),
+        _ => Err(err),
     }
 }
 
@@ -584,6 +612,27 @@ mod tests {
     }
 
     #[test]
+    fn test_import_error() {
+        let args = vec!["--import"].iter().map(|s| s.to_string()).collect();
+        let expected =
+            "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
+                .to_string();
+        let res = run(args);
+        assert_eq!(res.unwrap_err(), expected);
+    }
+
+    #[test]
+    fn test_import_help() {
+        let args = vec!["--import", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_import_help();
+        let res = run(args).expect("Could not display import help");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
     fn test_import_chrome() {
         let args = vec!["--import", "Chrome"]
             .iter()
@@ -646,6 +695,27 @@ mod tests {
             .collect();
         let expected = "TODO: Implement import functionality from Tap".to_string();
         let res = run(args).expect("Could not display import");
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_export_error() {
+        let args = vec!["--export"].iter().map(|s| s.to_string()).collect();
+        let expected =
+            "expected 1 argument - possible types: Chrome, Edge, Firefox, Opera, Safari, Tap"
+                .to_string();
+        let res = run(args);
+        assert_eq!(res.unwrap_err(), expected);
+    }
+
+    #[test]
+    fn test_export_help() {
+        let args = vec!["--export", "--help"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let expected = display_export_help();
+        let res = run(args).expect("Could not display export help");
         assert_eq!(res, expected);
     }
 
