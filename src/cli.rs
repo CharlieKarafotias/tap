@@ -1,35 +1,38 @@
+use crate::commands::help::Help;
+use crate::commands::{Command, CommandResult};
 use std::env;
 
-/// Parses command-line arguments, skipping the first argument (the program name).
+/// Collects command-line arguments, skipping the first argument (the program name).
 ///
 /// # Returns
 ///
 /// A vector of strings containing the command-line arguments provided after the program name.
-pub fn parse_args() -> Vec<String> {
+pub fn collect_args() -> Vec<String> {
     env::args().skip(1).collect()
 }
 
-pub fn run(args: Vec<String>) -> Result<String, String> {
+pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
     match args.len() {
-        0 => Ok(display_help()),
+        0 => Help::default().cli_run(&[]),
         _ => match args[0].as_str() {
             // General:
-            "--help" => Ok(display_help()),
-            "-v" | "--version" => Ok(display_version()),
-            // Utilities:
-            "--update" => Ok("TODO: Implement update functionality".to_string()),
-            "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
-            "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
-            "--import" => parse_args_import(&args[1..]),
-            "--export" => parse_args_export(&args[1..]),
-            // Adding, Updating, and Deleting Links:
-            "-a" | "--add" => parse_args_add(&args[1..]),
-            "-d" | "--delete" => parse_args_delete(&args[1..]),
-            "-s" | "--show" => parse_args_show(&args[1..]),
-            "-u" | "--upsert" => parse_args_upsert(&args[1..]),
-            // Opening links:
-            "here" => parse_args_here(&args[1..]),
-            _parent_entity => parse_args_parent_entity(&args),
+            "--help" => Help::default().cli_run(&args[1..]),
+            // "-v" | "--version" => Ok(display_version()),
+            // // Utilities:
+            // "--update" => Ok("TODO: Implement update functionality".to_string()),
+            // "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
+            // "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
+            // "--import" => parse_args_import(&args[1..]),
+            // "--export" => parse_args_export(&args[1..]),
+            // // Adding, Updating, and Deleting Links:
+            // "-a" | "--add" => parse_args_add(&args[1..]),
+            // "-d" | "--delete" => parse_args_delete(&args[1..]),
+            // "-s" | "--show" => parse_args_show(&args[1..]),
+            // "-u" | "--upsert" => parse_args_upsert(&args[1..]),
+            // // Opening links:
+            // "here" => parse_args_here(&args[1..]),
+            // _parent_entity => parse_args_parent_entity(&args),
+            _ => Ok(CommandResult::Value("TODO".to_string())),
         },
     }
 }

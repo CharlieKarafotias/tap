@@ -1,11 +1,12 @@
 mod cli;
+mod commands;
 mod db;
 
-use cli::{parse_args, run};
+use cli::{collect_args, run};
 use tokio::runtime::Builder;
 
 fn main() {
-    let args = parse_args();
+    let args = collect_args();
     Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(10 * 1024 * 1024) // 10MiB
