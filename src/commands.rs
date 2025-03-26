@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 pub(crate) mod help;
 pub(crate) mod version;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CommandResult {
     Value(String),
 }
@@ -19,13 +19,13 @@ impl Display for CommandResult {
 pub trait Command {
     fn error_message(&self) -> String;
     fn help_message(&self) -> String;
-    fn run(&self, parsed_args: &[String]) -> Result<CommandResult, String>;
+    fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String>;
 
     /// Parses the arguments of the command. If the command accepts the arguments provided, return
     /// the arguments. Otherwise, error with the error_message implementation.
-    fn parse_args<'a>(&self, args: &'a [String]) -> Result<&'a [String], String>;
+    fn parse_args<'a>(&self, args: Vec<String>) -> Result<Vec<String>, String>;
 
-    fn cli_run(self, args: &[String]) -> Result<CommandResult, String>
+    fn cli_run(self, args: Vec<String>) -> Result<CommandResult, String>
     where
         Self: Default,
     {

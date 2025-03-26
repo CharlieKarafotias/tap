@@ -26,7 +26,7 @@ impl Command for Version {
         s
     }
 
-    fn run(&self, parsed_args: &[String]) -> Result<CommandResult, String> {
+    fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String> {
         if parsed_args.is_empty() {
             Ok(CommandResult::Value(display_version()))
         } else {
@@ -34,7 +34,7 @@ impl Command for Version {
         }
     }
 
-    fn parse_args<'a>(&self, args: &'a [String]) -> Result<&'a [String], String> {
+    fn parse_args<'a>(&self, args: Vec<String>) -> Result<Vec<String>, String> {
         match args.len() {
             0 => Ok(args),
             1 => {
@@ -46,5 +46,48 @@ impl Command for Version {
             }
             _ => Err(self.error_message()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // parse_args test
+    #[test]
+    fn test_version_expected_no_args() {
+        let args: Vec<String> = vec![];
+        let version_cmd = Version::default();
+        let expected: Result<Vec<String>, String> = Ok(args.clone());
+        let res = version_cmd.parse_args(args);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_version_expected_help_arg() {
+        let args: Vec<String> = vec!["--help".to_string()];
+        let version_cmd = Version::default();
+        let expected: Result<Vec<String>, String> = Ok(args.clone());
+        let res = version_cmd.parse_args(args);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_version_unexpected_args() {
+        let args: Vec<String> = vec!["random".to_string()];
+        let version_cmd = Version::default();
+        let expected: Result<Vec<String>, String> = Err(version_cmd.error_message());
+        let res = version_cmd.parse_args(args);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_version_run() {
+        let version_cmd = Version::default();
+        let expected: Result<CommandResult, String> = Ok(
+            CommandResult::Value(display_version())
+        );
+        let res = version_cmd.run(vec![]);
+        assert_eq!(res, expected);
     }
 }
