@@ -1,5 +1,5 @@
-use crate::commands::help::Help;
 use crate::commands::{Command, CommandResult};
+use crate::commands::{help::Help, version::Version};
 use std::env;
 
 /// Collects command-line arguments, skipping the first argument (the program name).
@@ -17,7 +17,7 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
         _ => match args[0].as_str() {
             // General:
             "--help" => Help::default().cli_run(&args[1..]),
-            // "-v" | "--version" => Ok(display_version()),
+            "-v" | "--version" => Version::default().cli_run(&args[1..]),
             // // Utilities:
             // "--update" => Ok("TODO: Implement update functionality".to_string()),
             // "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
