@@ -67,9 +67,8 @@ mod tests {
     #[test]
     fn test_help_run() {
         let help_cmd = Help::default();
-        let expected: Result<CommandResult, String> = Ok(
-            CommandResult::Value(help_cmd.help_message())
-        );
+        let expected: Result<CommandResult, String> =
+            Ok(CommandResult::Value(help_cmd.help_message()));
         let res = help_cmd.run(vec![]);
         assert_eq!(res, expected);
     }

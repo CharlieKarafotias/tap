@@ -84,9 +84,7 @@ mod tests {
     #[test]
     fn test_version_run() {
         let version_cmd = Version::default();
-        let expected: Result<CommandResult, String> = Ok(
-            CommandResult::Value(display_version())
-        );
+        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(display_version()));
         let res = version_cmd.run(vec![]);
         assert_eq!(res, expected);
     }

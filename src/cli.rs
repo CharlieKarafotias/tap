@@ -1,3 +1,4 @@
+use crate::commands::update::Update;
 use crate::commands::{Command, CommandResult};
 use crate::commands::{help::Help, version::Version};
 use std::env;
@@ -11,6 +12,7 @@ pub fn collect_args() -> Vec<String> {
     env::args().skip(1).collect()
 }
 
+// TODO: add tests for these entry see CLI book: https://rust-cli.github.io/book/tutorial/testing.html
 pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
     match args.len() {
         0 => Help::default().cli_run(args),
@@ -19,7 +21,7 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
             "--help" => Help::default().cli_run(Vec::from(&args[1..])),
             "-v" | "--version" => Version::default().cli_run(Vec::from(&args[1..])),
             // // Utilities:
-            // "--update" => Ok("TODO: Implement update functionality".to_string()),
+            "--update" => Update::default().cli_run(Vec::from(&args[1..])),
             // "--tui" => Ok("TODO: Implement TUI functionality".to_string()),
             // "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
             // "--import" => parse_args_import(&args[1..]),
@@ -305,46 +307,6 @@ fn parse_args_upsert(args: &[String]) -> Result<String, String> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use mockall::mock;
-    use mockall::predicate::eq;
-    use super::*;
-
-    // Mocks
-
-    mock! {
-        Help {}
-        impl Command for Help {
-            fn error_message(&self) -> String {
-                "mocked error".to_string()
-            }
-            fn help_message(&self) -> String {
-                "mocked helped msg".to_string()
-            }
-            fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String> {
-                Ok(CommandResult::value("Mocked run".to_string()))
-            }
-            fn parse_args<'a>(&self, args: Vec<String>) -> Result<Vec<String>, String> {
-                Ok(vec!["mocked run"])
-            }
-            fn cli_run(self, args: Vec<String>) -> Result<CommandResult, String> {
-                Ok(CommandResult::value("Mocked".to_string()))
-            }
-        }
-    }
-
-    // General Commands:
-    // TODO: fix this test and add one for version. I want to ensure that when cli receives --help, the correct struct is called
-    #[test]
-    fn test_display_help() {
-        let cli_args = vec!["--help".to_string()];
-        let mut mock_help = MockHelp::new();
-        let mock_args = Vec::from(&cli_args[1..]);
-        let res = run(cli_args);
-        mock_help.expect_cli_run().with(eq(mock_args)).times(1);
-    }
-}
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

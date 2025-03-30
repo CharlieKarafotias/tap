@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 pub(crate) mod help;
+pub(crate) mod update;
 pub(crate) mod version;
 
 #[derive(Debug, PartialEq)]
@@ -23,14 +24,14 @@ pub trait Command {
 
     /// Parses the arguments of the command. If the command accepts the arguments provided, return
     /// the arguments. Otherwise, error with the error_message implementation.
-    fn parse_args<'a>(&self, args: Vec<String>) -> Result<Vec<String>, String>;
+    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String>;
 
     fn cli_run(self, args: Vec<String>) -> Result<CommandResult, String>
     where
         Self: Default,
     {
         let parsed_args = self.parse_args(args)?;
-        Ok(self.run(parsed_args)?)
+        self.run(parsed_args)
     }
 }
 
