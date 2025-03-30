@@ -32,7 +32,7 @@ impl Command for Help {
         Ok(CommandResult::Value(self.help_message()))
     }
 
-    fn parse_args<'a>(&self, args: Vec<String>) -> Result<Vec<String>, String> {
+    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String> {
         if !args.is_empty() {
             Err(self.error_message())
         } else {

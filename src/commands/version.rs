@@ -34,7 +34,7 @@ impl Command for Version {
         }
     }
 
-    fn parse_args<'a>(&self, args: Vec<String>) -> Result<Vec<String>, String> {
+    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String> {
         match args.len() {
             0 => Ok(args),
             1 => {

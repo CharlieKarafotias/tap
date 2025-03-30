@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 pub(crate) mod help;
+pub(crate) mod tui;
 pub(crate) mod update;
 pub(crate) mod version;
 
