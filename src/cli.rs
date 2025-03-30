@@ -1,6 +1,6 @@
 use crate::commands::update::Update;
 use crate::commands::{Command, CommandResult};
-use crate::commands::{help::Help, tui::Tui, version::Version};
+use crate::commands::{help::Help, init::Init, tui::Tui, version::Version};
 use std::env;
 
 /// Collects command-line arguments, skipping the first argument (the program name).
@@ -23,7 +23,7 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
             // // Utilities:
             "--update" => Update::default().cli_run(Vec::from(&args[1..])),
             "--tui" => Tui::default().cli_run(Vec::from(&args[1..])),
-            // "-i" | "--init" => Ok("TODO: Implement init functionality".to_string()),
+            "-i" | "--init" => Init::default().cli_run(Vec::from(&args[1..])),
             // "--import" => parse_args_import(&args[1..]),
             // "--export" => parse_args_export(&args[1..]),
             // // Adding, Updating, and Deleting Links:
