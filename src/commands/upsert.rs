@@ -1,31 +1,31 @@
 use crate::commands::{Command, CommandResult};
 
-pub(crate) struct Add {
+pub(crate) struct Upsert {
     name: String,
     description: String,
 }
 
-impl Default for Add {
+impl Default for Upsert {
     fn default() -> Self {
         Self {
-            name: "(-a, --add)".to_string(),
-            description: "Add a new Link to the provided Parent Entity".to_string(),
+            name: "(-u, --upsert)".to_string(),
+            description: "Creates/Updates a Link in the provided Parent Entity".to_string(),
         }
     }
 }
 
-impl Command for Add {
+impl Command for Upsert {
     fn error_message(&self) -> String {
-        "expected 3 arguments, see the Usage section with tap --add --help".to_string()
+        "expected 3 arguments, see the Usage section with tap --upsert --help".to_string()
     }
 
     fn help_message(&self) -> String {
         let mut s = String::new();
-        s.push_str("Tap --add command will add a new link to the Parent Entity\n\n");
-        s.push_str("Command Structure: tap --add <Parent Entity | here> <Link Name> <Value>\n");
+        s.push_str("Tap --upsert command will create/update a Link in the Parent Entity\n\n");
+        s.push_str("Command Structure: tap --upsert <Parent Entity | here> <Link Name> <Value>\n");
         s.push_str("Example Usage: \n\n");
-        s.push_str("  - Add a link to search-engines Parent Entity: tap --add search-engines google https://google.com\n");
-        s.push_str("  - Add a link to Parent Entity sharing name of current directory: tap --add here google https://google.com\n");
+        s.push_str("  - Create/Update a link in search-engines Parent Entity: tap --upsert search-engines google https://google.com\n");
+        s.push_str("  - Create/Update a link in Parent Entity sharing name of current directory: tap --upsert here google https://google.com\n");
         s
     }
 
@@ -40,10 +40,10 @@ impl Command for Add {
             }
             3 => match (args[0].as_str(), args[1].as_str(), args[2].as_str()) {
                 ("here", link_name, value) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement add functionality for here with Link Name {link_name} and Value {value}"
+                    "TODO: Implement upsert functionality for here with Link Name {link_name} and Value {value}"
                 ))),
                 (parent_entity, link_name, value) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement add functionality for Parent Entity {parent_entity} with Link Name {link_name} and Value {value}"
+                    "TODO: Implement upsert functionality for Parent Entity {parent_entity} with Link Name {link_name} and Value {value}"
                 ))),
             },
             _ => Err(self.error_message()),
@@ -54,51 +54,50 @@ impl Command for Add {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::export::Export;
 
     #[test]
-    fn test_add_run_expected_help_arg() {
+    fn test_upsert_run_expected_help_arg() {
         let args: Vec<String> = vec!["--help".to_string()];
-        let cmd = Add::default();
+        let cmd = Upsert::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 
     #[test]
-    fn test_add_run_unexpected_args() {
+    fn test_upsert_run_unexpected_args() {
         let args: Vec<String> = vec!["random".to_string()];
-        let cmd = Add::default();
+        let cmd = Upsert::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 
     #[test]
-    fn test_add_run_expected_three_args_here() {
+    fn test_upsert_run_expected_three_args_here() {
         let args: Vec<String> = vec![
             "here".to_string(),
             "google".to_string(),
             "https://google.com".to_string(),
         ];
-        let cmd = Add::default();
+        let cmd = Upsert::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
-            "TODO: Implement add functionality for here with Link Name google and Value https://google.com".to_string()
+            "TODO: Implement upsert functionality for here with Link Name google and Value https://google.com".to_string()
         ));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 
     #[test]
-    fn test_add_run_expected_three_args_parent_entity() {
+    fn test_upsert_run_expected_three_args_parent_entity() {
         let args: Vec<String> = vec![
             "search-engines".to_string(),
             "google".to_string(),
             "https://google.com".to_string(),
         ];
-        let cmd = Add::default();
+        let cmd = Upsert::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
-            "TODO: Implement add functionality for Parent Entity search-engines with Link Name google and Value https://google.com".to_string()
+            "TODO: Implement upsert functionality for Parent Entity search-engines with Link Name google and Value https://google.com".to_string()
         ));
         let res = cmd.run(args);
         assert_eq!(res, expected);

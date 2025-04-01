@@ -6,8 +6,10 @@ pub(crate) mod export;
 pub(crate) mod help;
 pub(crate) mod import;
 pub(crate) mod init;
+pub(crate) mod show;
 pub(crate) mod tui;
 pub(crate) mod update;
+pub(crate) mod upsert;
 pub(crate) mod version;
 
 #[derive(Debug, PartialEq)]

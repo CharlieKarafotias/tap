@@ -1,8 +1,8 @@
 use crate::commands::update::Update;
 use crate::commands::{Command, CommandResult};
 use crate::commands::{
-    add::Add, delete::Delete, export::Export, help::Help, import::Import, init::Init, tui::Tui,
-    version::Version,
+    add::Add, delete::Delete, export::Export, help::Help, import::Import, init::Init, show::Show,
+    tui::Tui, upsert::Upsert, version::Version,
 };
 use std::env;
 
@@ -32,8 +32,8 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
             // Adding, Updating, and Deleting Links:
             "-a" | "--add" => Add::default().run(Vec::from(&args[1..])),
             "-d" | "--delete" => Delete::default().run(Vec::from(&args[1..])),
-            // "-s" | "--show" => parse_args_show(&args[1..]),
-            // "-u" | "--upsert" => parse_args_upsert(&args[1..]),
+            "-s" | "--show" => Show::default().run(Vec::from(&args[1..])),
+            "-u" | "--upsert" => Upsert::default().run(Vec::from(&args[1..])),
             // // Opening links:
             // "here" => parse_args_here(&args[1..]),
             // _parent_entity => parse_args_parent_entity(&args),
@@ -48,29 +48,6 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
 
 fn display_error() -> String {
     "too many arguments, see the Usage section with --help".to_string()
-}
-
-fn display_show_help() -> String {
-    format!(
-        "Tap --show command will show either a specific link or all links of a Parent Entity\n\nExample Usage: {}\n{}",
-        "Show all links: tap --show search-engines",
-        "Show specific link: tap --show search-engines google"
-    )
-}
-
-fn display_upsert_help() -> String {
-    format!(
-        "Tap --upsert command will add/update a new/existing link to the Parent Entity\n\nExample Usage: {}",
-        "tap --upsert search-engines google https://google.com"
-    )
-}
-
-fn display_export_help() -> String {
-    format!(
-        "Tap export command will export a bookmark file to one of the following browsers:\n{}\n\nExample Usage: {}",
-        "Chrome, Edge, Firefox, Opera, Safari, Tap",
-        "tap --export [Chrome | Edge | Firefox | Opera | Safari | Tap] <destination folder>"
-    )
 }
 
 fn display_here_help() -> String {
@@ -117,62 +94,6 @@ fn parse_args_parent_entity(args: &[String]) -> Result<String, String> {
             "TODO: Implement open functionality for Parent Entity: {}",
             args[0]
         ))
-    }
-}
-
-fn parse_args_show(args: &[String]) -> Result<String, String> {
-    let err = "expected 1 or 2 arguments - a Parent Entity and optionally a Link Name".to_string();
-    let help = display_show_help();
-    if args.len() != 1 && args.len() != 2 {
-        return Err(err);
-    }
-    match args[0].as_str() {
-        "--help" => Ok(help),
-        "here" => {
-            if args.len() == 2 {
-                Ok(format!(
-                    "TODO: Implement show functionality for here with Link Name {}",
-                    args[1]
-                ))
-            } else {
-                Ok("TODO: Implement show functionality for here".to_string())
-            }
-        }
-        parent_entity => {
-            if args.len() == 2 {
-                Ok(format!(
-                    "TODO: Implement show functionality for Parent Entity {} with Link Name {}",
-                    parent_entity, args[1]
-                ))
-            } else {
-                Ok(format!(
-                    "TODO: Implement show functionality for Parent Entity: {}",
-                    parent_entity
-                ))
-            }
-        }
-    }
-}
-
-fn parse_args_upsert(args: &[String]) -> Result<String, String> {
-    let err = "expected 3 arguments - a Parent Entity, a Link Name, and a Value".to_string();
-    let help = display_upsert_help();
-    if args.len() == 1 && args[0].as_str() == "--help" {
-        return Ok(help);
-    }
-    if args.len() != 3 {
-        return Err(err);
-    }
-    match args[0].as_str() {
-        "--help" => Ok(help),
-        "here" => Ok(format!(
-            "TODO: Implement upsert functionality for here with Link Name {} and Value {}",
-            args[1], args[2]
-        )),
-        parent_entity => Ok(format!(
-            "TODO: Implement upsert functionality for Parent Entity {} with Link Name {} and Value {}",
-            parent_entity, args[1], args[2]
-        )),
     }
 }
 
