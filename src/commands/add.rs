@@ -22,7 +22,7 @@ impl Command for Add {
     fn help_message(&self) -> String {
         let mut s = String::new();
         s.push_str("Tap --add command will add a new link to the Parent Entity\n\n");
-        s.push_str("Example Usage: tap --add <Parent Entity> <Link Name> <Value>\n");
+        s.push_str("Command Structure: tap --add <Parent Entity> <Link Name> <Value>\n");
         s.push_str("Example Usage: tap --add search-engines google https://google.com\n");
         s
     }

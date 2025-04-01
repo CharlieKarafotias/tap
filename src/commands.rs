@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 pub(crate) mod add;
+pub(crate) mod delete;
 pub(crate) mod export;
 pub(crate) mod help;
 pub(crate) mod import;
