@@ -73,6 +73,7 @@ Reserved List:
   - `--upsert`
   - `-v`
   - `--version`
+  - `--parent-entity`
 
 ### How Does This Affect Me?
 
