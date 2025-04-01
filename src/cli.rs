@@ -1,6 +1,8 @@
 use crate::commands::update::Update;
 use crate::commands::{Command, CommandResult};
-use crate::commands::{help::Help, init::Init, tui::Tui, version::Version};
+use crate::commands::{
+    export::Export, help::Help, import::Import, init::Init, tui::Tui, version::Version,
+};
 use std::env;
 
 /// Collects command-line arguments, skipping the first argument (the program name).
@@ -24,8 +26,8 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
             "--update" => Update::default().cli_run(Vec::from(&args[1..])),
             "--tui" => Tui::default().cli_run(Vec::from(&args[1..])),
             "-i" | "--init" => Init::default().cli_run(Vec::from(&args[1..])),
-            // "--import" => parse_args_import(&args[1..]),
-            // "--export" => parse_args_export(&args[1..]),
+            "--import" => Import::default().cli_run(Vec::from(&args[1..])),
+            "--export" => Export::default().cli_run(Vec::from(&args[1..])),
             // // Adding, Updating, and Deleting Links:
             // "-a" | "--add" => parse_args_add(&args[1..]),
             // "-d" | "--delete" => parse_args_delete(&args[1..]),
@@ -70,14 +72,6 @@ fn display_upsert_help() -> String {
     format!(
         "Tap --upsert command will add/update a new/existing link to the Parent Entity\n\nExample Usage: {}",
         "tap --upsert search-engines google https://google.com"
-    )
-}
-
-fn display_import_help() -> String {
-    format!(
-        "Tap import command will import a bookmark file from one of the following browsers into Tap:\n{}\n\nExample Usage: {}",
-        "Chrome, Edge, Firefox, Opera, Safari, Tap",
-        "tap --import [Chrome | Edge | Firefox | Opera | Safari | Tap] <bookmark file>"
     )
 }
 
@@ -133,66 +127,6 @@ fn parse_args_parent_entity(args: &[String]) -> Result<String, String> {
             "TODO: Implement open functionality for Parent Entity: {}",
             args[0]
         ))
-    }
-}
-
-fn parse_args_import(args: &[String]) -> Result<String, String> {
-    let err = "expected 2 arguments - see 'tap --import --help' for more information.".to_string();
-    let help = display_import_help();
-    if args.len() == 1 && args[0] == "--help" {
-        return Ok(help);
-    }
-    if args.len() != 2 {
-        return Err(err);
-    }
-    match (args[0].as_str(), args[1].as_str()) {
-        ("Chrome", f) => Ok(format!(
-            "TODO: Implement import functionality from Chrome: {f}"
-        )),
-        ("Edge", f) => Ok(format!(
-            "TODO: Implement import functionality from Edge: {f}"
-        )),
-        ("Firefox", f) => Ok(format!(
-            "TODO: Implement import functionality from Firefox: {f}"
-        )),
-        ("Opera", f) => Ok(format!(
-            "TODO: Implement import functionality from Opera: {f}"
-        )),
-        ("Safari", f) => Ok(format!(
-            "TODO: Implement import functionality from Safari: {f}"
-        )),
-        ("Tap", f) => Ok(format!(
-            "TODO: Implement import functionality from Tap: {f}"
-        )),
-        _ => Err(err),
-    }
-}
-
-fn parse_args_export(args: &[String]) -> Result<String, String> {
-    let err = "expected 2 arguments - see 'tap --export --help' for more information.".to_string();
-    let help = display_export_help();
-    if args.len() == 1 && args[0] == "--help" {
-        return Ok(help);
-    }
-    if args.len() != 2 {
-        return Err(err);
-    }
-    match (args[0].as_str(), args[1].as_str()) {
-        ("Chrome", f) => Ok(format!(
-            "TODO: Implement export functionality to Chrome: {f}"
-        )),
-        ("Edge", f) => Ok(format!("TODO: Implement export functionality to Edge: {f}")),
-        ("Firefox", f) => Ok(format!(
-            "TODO: Implement export functionality to Firefox: {f}"
-        )),
-        ("Opera", f) => Ok(format!(
-            "TODO: Implement export functionality to Opera: {f}"
-        )),
-        ("Safari", f) => Ok(format!(
-            "TODO: Implement export functionality to Safari: {f}"
-        )),
-        ("Tap", f) => Ok(format!("TODO: Implement export functionality to Tap: {f}")),
-        _ => Err(err),
     }
 }
 
