@@ -26,20 +26,12 @@ impl Command for Version {
         s
     }
 
-    fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String> {
-        if parsed_args.is_empty() {
-            Ok(CommandResult::Value(display_version()))
-        } else {
-            Ok(CommandResult::Value(self.help_message()))
-        }
-    }
-
-    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String> {
+    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
         match args.len() {
-            0 => Ok(args),
+            0 => Ok(CommandResult::Value(display_version())),
             1 => {
                 if args[0] == "--help" {
-                    Ok(args)
+                    Ok(CommandResult::Value(self.help_message()))
                 } else {
                     Err(self.error_message())
                 }
@@ -53,39 +45,30 @@ impl Command for Version {
 mod tests {
     use super::*;
 
-    // parse_args test
     #[test]
-    fn test_version_expected_no_args() {
+    fn test_version_run_expected_args() {
         let args: Vec<String> = vec![];
-        let version_cmd = Version::default();
-        let expected: Result<Vec<String>, String> = Ok(args.clone());
-        let res = version_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_version_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
-        let version_cmd = Version::default();
-        let expected: Result<Vec<String>, String> = Ok(args.clone());
-        let res = version_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_version_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string()];
-        let version_cmd = Version::default();
-        let expected: Result<Vec<String>, String> = Err(version_cmd.error_message());
-        let res = version_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_version_run() {
-        let version_cmd = Version::default();
+        let cmd = Version::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(display_version()));
-        let res = version_cmd.run(vec![]);
+        let res = cmd.run(args);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_version_run_help_arg() {
+        let args: Vec<String> = vec!["--help".to_string()];
+        let cmd = Version::default();
+        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
+        let res = cmd.run(args);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_version_run_unexpected_args() {
+        let args: Vec<String> = vec!["random".to_string()];
+        let cmd = Version::default();
+        let expected: Result<CommandResult, String> = Err(cmd.error_message());
+        let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 }

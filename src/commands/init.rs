@@ -26,21 +26,12 @@ impl Command for Init {
         s
     }
 
-    fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String> {
-        if parsed_args.is_empty() {
-            todo!("Implement init Functionality")
-            // Ok(CommandResult::Value("Implement init Functionality".to_string()))
-        } else {
-            Ok(CommandResult::Value(self.help_message()))
-        }
-    }
-
-    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String> {
+    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
         match args.len() {
-            0 => Ok(args),
+            0 => todo!("Implement init Functionality"),
             1 => {
                 if args[0] == "--help" {
-                    Ok(args)
+                    Ok(CommandResult::Value(self.help_message()))
                 } else {
                     Err(self.error_message())
                 }
@@ -54,43 +45,29 @@ impl Command for Init {
 mod tests {
     use super::*;
 
-    // parse_args test
-    #[test]
-    fn test_init_expected_no_args() {
-        let args: Vec<String> = vec![];
-        let init_cmd = Init::default();
-        let expected: Result<Vec<String>, String> = Ok(args.clone());
-        let res = init_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_init_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
-        let init_cmd = Init::default();
-        let expected: Result<Vec<String>, String> = Ok(args.clone());
-        let res = init_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_init_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string()];
-        let init_cmd = Init::default();
-        let expected: Result<Vec<String>, String> = Err(init_cmd.error_message());
-        let res = init_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
     #[test]
     #[should_panic] // TODO: remove after implementing init functionality
-    fn test_init_run() {
-        let init_cmd = Init::default();
-        // TODO: Implement init Functionality
-        // let expected: Result<CommandResult, String> = Ok(
-        //     CommandResult::Value(todo!("Implement init Functionality"))
-        // );
-        let res = init_cmd.run(vec![]);
-        // assert_eq!(res, expected);
+    fn test_init_run_expected_args() {
+        let cmd = Init::default();
+        let args: Vec<String> = vec![];
+        let res = cmd.run(args);
+    }
+
+    #[test]
+    fn test_init_run_expected_help_arg() {
+        let args: Vec<String> = vec!["--help".to_string()];
+        let cmd = Init::default();
+        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
+        let res = cmd.run(args);
+        assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn test_init_run_unexpected_args() {
+        let args: Vec<String> = vec!["random".to_string()];
+        let cmd = Init::default();
+        let expected: Result<CommandResult, String> = Err(cmd.error_message());
+        let res = cmd.run(args);
+        assert_eq!(res, expected);
     }
 }

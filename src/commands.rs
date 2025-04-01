@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+pub(crate) mod add;
 pub(crate) mod export;
 pub(crate) mod help;
 pub(crate) mod import;
@@ -25,18 +26,6 @@ pub trait Command {
     fn error_message(&self) -> String;
     fn help_message(&self) -> String;
     fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String>;
-
-    /// Parses the arguments of the command. If the command accepts the arguments provided, return
-    /// the arguments. Otherwise, error with the error_message implementation.
-    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String>;
-
-    fn cli_run(self, args: Vec<String>) -> Result<CommandResult, String>
-    where
-        Self: Default,
-    {
-        let parsed_args = self.parse_args(args)?;
-        self.run(parsed_args)
-    }
 }
 
 // Utility Messages used across commands

@@ -28,15 +28,11 @@ impl Command for Help {
         )
     }
 
-    fn run(&self, _parsed_args: Vec<String>) -> Result<CommandResult, String> {
-        Ok(CommandResult::Value(self.help_message()))
-    }
-
-    fn parse_args(&self, args: Vec<String>) -> Result<Vec<String>, String> {
+    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
         if !args.is_empty() {
             Err(self.error_message())
         } else {
-            Ok(args)
+            Ok(CommandResult::Value(self.help_message()))
         }
     }
 }
@@ -45,31 +41,21 @@ impl Command for Help {
 mod tests {
     use super::*;
 
-    // parse_args test
-    #[test]
-    fn test_help_expected_args() {
-        let args = vec![];
-        let help_cmd = Help::default();
-        let expected: Result<Vec<String>, String> = Ok(args.clone());
-        let res = help_cmd.parse_args(args);
-        assert_eq!(res, expected);
-    }
-
     #[test]
     fn test_help_unexpected_args() {
-        let args = vec!["--help".to_string()];
-        let help_cmd = Help::default();
-        let expected: Result<Vec<String>, String> = Err(help_cmd.error_message());
-        let res = help_cmd.parse_args(args);
+        let args = vec!["--help".to_string(), "me".to_string()];
+        let cmd = Help::default();
+        let expected: Result<CommandResult, String> = Err(cmd.error_message());
+        let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_help_run() {
-        let help_cmd = Help::default();
-        let expected: Result<CommandResult, String> =
-            Ok(CommandResult::Value(help_cmd.help_message()));
-        let res = help_cmd.run(vec![]);
+        let args = vec![];
+        let cmd = Help::default();
+        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
+        let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 }

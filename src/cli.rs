@@ -1,7 +1,7 @@
 use crate::commands::update::Update;
 use crate::commands::{Command, CommandResult};
 use crate::commands::{
-    export::Export, help::Help, import::Import, init::Init, tui::Tui, version::Version,
+    add::Add, export::Export, help::Help, import::Import, init::Init, tui::Tui, version::Version,
 };
 use std::env;
 
@@ -17,26 +17,30 @@ pub fn collect_args() -> Vec<String> {
 // TODO: add tests for these entry see CLI book: https://rust-cli.github.io/book/tutorial/testing.html
 pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
     match args.len() {
-        0 => Help::default().cli_run(args),
+        0 => Help::default().run(args),
         _ => match args[0].as_str() {
             // General:
-            "--help" => Help::default().cli_run(Vec::from(&args[1..])),
-            "-v" | "--version" => Version::default().cli_run(Vec::from(&args[1..])),
+            "--help" => Help::default().run(Vec::from(&args[1..])),
+            "-v" | "--version" => Version::default().run(Vec::from(&args[1..])),
             // // Utilities:
-            "--update" => Update::default().cli_run(Vec::from(&args[1..])),
-            "--tui" => Tui::default().cli_run(Vec::from(&args[1..])),
-            "-i" | "--init" => Init::default().cli_run(Vec::from(&args[1..])),
-            "--import" => Import::default().cli_run(Vec::from(&args[1..])),
-            "--export" => Export::default().cli_run(Vec::from(&args[1..])),
-            // // Adding, Updating, and Deleting Links:
-            // "-a" | "--add" => parse_args_add(&args[1..]),
+            "--update" => Update::default().run(Vec::from(&args[1..])),
+            "--tui" => Tui::default().run(Vec::from(&args[1..])),
+            "-i" | "--init" => Init::default().run(Vec::from(&args[1..])),
+            "--import" => Import::default().run(Vec::from(&args[1..])),
+            "--export" => Export::default().run(Vec::from(&args[1..])),
+            // Adding, Updating, and Deleting Links:
+            "-a" | "--add" => Add::default().run(Vec::from(&args[1..])),
             // "-d" | "--delete" => parse_args_delete(&args[1..]),
             // "-s" | "--show" => parse_args_show(&args[1..]),
             // "-u" | "--upsert" => parse_args_upsert(&args[1..]),
             // // Opening links:
             // "here" => parse_args_here(&args[1..]),
             // _parent_entity => parse_args_parent_entity(&args),
-            _ => Ok(CommandResult::Value("TODO".to_string())),
+            // TODO: remove after parent_entity added
+            unknown_cmd => Err(format!(
+                "unknown command \"{}\", see tap --help for proper usage",
+                unknown_cmd
+            )),
         },
     }
 }

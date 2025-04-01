@@ -7,12 +7,4 @@ repository = "https://github.com/CharlieKarafotias/tap"
 description = "A CLI tool designed to help you quickly access links and resources associated with a parent entity"
 
 [dependencies]
-surrealdb = { version = "2.2.1", features = ["allocator", "kv-mem", "kv-surrealkv"] }
-tokio = { version = "1.44.1", features = ["macros", "rt-multi-thread"] }
 
-[profile.release]
-lto = true
-strip = true
-opt-level = 3
-panic = 'abort'
-codegen-units = 1
