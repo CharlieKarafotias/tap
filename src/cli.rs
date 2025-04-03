@@ -23,7 +23,7 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
             // General:
             "--help" => Help::default().run(Vec::from(&args[1..])),
             "-v" | "--version" => Version::default().run(Vec::from(&args[1..])),
-            // // Utilities:
+            // Utilities:
             "--update" => Update::default().run(Vec::from(&args[1..])),
             "--tui" => Tui::default().run(Vec::from(&args[1..])),
             "-i" | "--init" => Init::default().run(Vec::from(&args[1..])),
@@ -34,7 +34,7 @@ pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
             "-d" | "--delete" => Delete::default().run(Vec::from(&args[1..])),
             "-s" | "--show" => Show::default().run(Vec::from(&args[1..])),
             "-u" | "--upsert" => Upsert::default().run(Vec::from(&args[1..])),
-            // // Opening links:
+            // Opening links:
             "here" => Here::default().run(Vec::from(&args[1..])),
             _parent_entity => ParentEntity::default().run(Vec::from(&args[..])),
         },

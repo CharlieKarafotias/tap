@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Tui {
     name: String,
     description: String,
+    args: [String; 0],
 }
 
 impl Default for Tui {
@@ -10,6 +11,7 @@ impl Default for Tui {
         Self {
             name: "(--tui)".to_string(),
             description: "Launches UI for adding, updating, and deleting links".to_string(),
+            args: [],
         }
     }
 }

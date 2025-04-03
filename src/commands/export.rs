@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Export {
     name: String,
     description: String,
+    args: [String; 2],
 }
 
 impl Default for Export {
@@ -10,6 +11,10 @@ impl Default for Export {
         Self {
             name: "--export".to_string(),
             description: "Exports Tap links to a browser bookmark file".to_string(),
+            args: [
+                "<Browser | Tap>".to_string(),
+                "<destination folder>".to_string(),
+            ],
         }
     }
 }
@@ -29,7 +34,7 @@ impl Command for Export {
         format!(
             "Tap export exports all links from Tap to a bookmark file compatible with the following browsers:\n{}\n\nExample Usage: {}",
             "Chrome, Edge, Firefox, Opera, Safari, Tap",
-            "tap --export [Chrome | Edge | Firefox | Opera | Safari | Tap] <destination folder>"
+            "tap --export <Chrome | Edge | Firefox | Opera | Safari | Tap> <destination folder>"
         )
     }
 

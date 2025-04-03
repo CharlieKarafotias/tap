@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Show {
     name: String,
     description: String,
+    args: [String; 2],
 }
 
 impl Default for Show {
@@ -10,6 +11,10 @@ impl Default for Show {
         Self {
             name: "(-s, --show)".to_string(),
             description: "Shows the value(s) of existing Link(s) in Parent Entity".to_string(),
+            args: [
+                "<Parent Entity | here>".to_string(),
+                "[Link Name]".to_string(),
+            ],
         }
     }
 }

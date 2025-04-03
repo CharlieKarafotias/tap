@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Delete {
     name: String,
     description: String,
+    args: [String; 2],
 }
 
 impl Default for Delete {
@@ -10,6 +11,10 @@ impl Default for Delete {
         Self {
             name: "(-d, --delete)".to_string(),
             description: "Deletes an existing Link from the provided Parent Entity".to_string(),
+            args: [
+                "<Parent Entity | here>".to_string(),
+                "[Link Name]".to_string(),
+            ],
         }
     }
 }

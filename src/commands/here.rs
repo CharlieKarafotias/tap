@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Here {
     name: String,
     description: String,
+    args: [String; 1],
 }
 
 impl Default for Here {
@@ -11,6 +12,7 @@ impl Default for Here {
             name: "here".to_string(),
             description: "Open 1/all Links of Parent Entity sharing name of current directory"
                 .to_string(),
+            args: ["[Link Name]".to_string()],
         }
     }
 }

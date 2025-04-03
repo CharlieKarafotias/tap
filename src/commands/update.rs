@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Update {
     name: String,
     description: String,
+    args: [String; 0],
 }
 
 impl Default for Update {
@@ -10,6 +11,7 @@ impl Default for Update {
         Self {
             name: "(--update)".to_string(),
             description: "Update Tap to the latest version".to_string(),
+            args: [],
         }
     }
 }

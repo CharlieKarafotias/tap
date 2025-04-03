@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult, display_commands, display_version}
 pub(crate) struct Help {
     name: String,
     description: String,
+    args: [String; 0],
 }
 
 impl Default for Help {
@@ -10,6 +11,7 @@ impl Default for Help {
         Self {
             name: "--help".to_string(),
             description: "Display this help message".to_string(),
+            args: [],
         }
     }
 }

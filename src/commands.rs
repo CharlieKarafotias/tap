@@ -40,6 +40,25 @@ pub(in crate::commands) fn display_version() -> String {
 
 // TODO: use the name and descriptions of each command to generate this instead of maintaining manually
 pub(in crate::commands) fn display_commands() -> String {
+    // TODO: dynamically adapt for size of terminal so it doesn't overflow
+    // Opening Links:
+    let parent_entity = parent_entity::ParentEntity::default();
+    let here = here::Here::default();
+    // Adding, Updating, and Deleting Links:
+    let add = add::Add::default();
+    let delete = delete::Delete::default();
+    let show = show::Show::default();
+    let upsert = upsert::Upsert::default();
+    // Utility Commands:
+    let init = init::Init::default();
+    let import = import::Import::default();
+    let export = export::Export::default();
+    let tui = tui::Tui::default();
+    let update = update::Update::default();
+    // Other Commands:
+    let help = help::Help::default();
+    let version = version::Version::default();
+
     let mut s = "".to_string();
     s.push_str("Usage:\n");
     s.push_str("  Opening Links:\n");

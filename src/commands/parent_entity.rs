@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct ParentEntity {
     name: String,
     description: String,
+    args: [String; 2],
 }
 
 impl Default for ParentEntity {
@@ -10,6 +11,7 @@ impl Default for ParentEntity {
         Self {
             name: "".to_string(),
             description: "Open 1/all Links of Parent Entity".to_string(),
+            args: ["<Parent Entity>".to_string(), "[Link Name]".to_string()],
         }
     }
 }

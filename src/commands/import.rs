@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Import {
     name: String,
     description: String,
+    args: [String; 2],
 }
 
 impl Default for Import {
@@ -10,6 +11,7 @@ impl Default for Import {
         Self {
             name: "--import".to_string(),
             description: "Imports a bookmark file into Tap".to_string(),
+            args: ["<Browser | Tap>".to_string(), "<bookmark file>".to_string()],
         }
     }
 }
@@ -29,7 +31,7 @@ impl Command for Import {
         format!(
             "Tap import imports a bookmark file from one of the following browsers into Tap:\n{}\n\nExample Usage: {}",
             "Chrome, Edge, Firefox, Opera, Safari, Tap",
-            "tap --import [Chrome | Edge | Firefox | Opera | Safari | Tap] <bookmark file>"
+            "tap --import <Chrome | Edge | Firefox | Opera | Safari | Tap> <bookmark file>"
         )
     }
 

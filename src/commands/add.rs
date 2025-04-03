@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Add {
     name: String,
     description: String,
+    args: [String; 3],
 }
 
 impl Default for Add {
@@ -10,6 +11,11 @@ impl Default for Add {
         Self {
             name: "(-a, --add)".to_string(),
             description: "Add a new Link to the provided Parent Entity".to_string(),
+            args: [
+                "<Parent Entity | here>".to_string(),
+                "<Link Name>".to_string(),
+                "<Value>".to_string(),
+            ],
         }
     }
 }

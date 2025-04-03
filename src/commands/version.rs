@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult, display_version};
 pub(crate) struct Version {
     name: String,
     description: String,
+    args: [String; 0],
 }
 
 impl Default for Version {
@@ -10,6 +11,7 @@ impl Default for Version {
         Self {
             name: "(-v, --version)".to_string(),
             description: "Display the version".to_string(),
+            args: [],
         }
     }
 }

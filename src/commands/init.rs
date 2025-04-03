@@ -3,6 +3,7 @@ use crate::commands::{Command, CommandResult};
 pub(crate) struct Init {
     name: String,
     description: String,
+    args: [String; 0],
 }
 
 impl Default for Init {
@@ -10,6 +11,7 @@ impl Default for Init {
         Self {
             name: "(-i, --init)".to_string(),
             description: "Initializes Tap (Shell Auto-Completion, etc.)".to_string(),
+            args: [],
         }
     }
 }
