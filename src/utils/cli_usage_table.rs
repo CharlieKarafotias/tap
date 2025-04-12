@@ -78,7 +78,7 @@ impl Display for Section {
             for element in &self.elements {
                 writeln!(
                     f,
-                    "{} {} {}",
+                    " {} {} {}",
                     self.pad(element.name.as_str(), 0),
                     self.pad(element.args.join(" ").as_str(), 1),
                     self.pad(element.description.as_str(), 2)
@@ -113,8 +113,7 @@ impl UsageTableBuilder {
         }
     }
 
-    pub(crate) fn add_section(mut self, title: impl ToString, mut elements: Vec<Row>) -> Self {
-        elements.sort();
+    pub(crate) fn add_section(mut self, title: impl ToString, elements: Vec<Row>) -> Self {
         let section = Section::new(title, elements);
         if let Some(sections) = &mut self.sections {
             sections.push(section);
@@ -133,6 +132,7 @@ impl Display for UsageTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         {
             writeln!(f, "{}", self.title)?;
+            writeln!(f, "  tap <command> <args> [options]\n")?;
             for section in &self.sections {
                 section.fmt(f)?
             }

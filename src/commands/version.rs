@@ -12,8 +12,8 @@ pub(crate) struct Version {
 impl Default for Version {
     fn default() -> Self {
         Self {
-            name: "(-v, --version)".to_string(),
-            description: "Display the version".to_string(),
+            name: "-v, --version".to_string(),
+            description: "Show tap version".to_string(),
             args: [],
         }
     }

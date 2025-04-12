@@ -6,15 +6,15 @@ use crate::{
 pub(crate) struct ParentEntity {
     name: String,
     description: String,
-    args: [String; 2],
+    args: [String; 1],
 }
 
 impl Default for ParentEntity {
     fn default() -> Self {
         Self {
-            name: "".to_string(),
-            description: "Open 1/all Links of Parent Entity".to_string(),
-            args: ["<Parent Entity>".to_string(), "[Link Name]".to_string()],
+            name: "<Parent>".to_string(),
+            description: "Open 1/all Links of Parent".to_string(),
+            args: ["[Link]".to_string()],
         }
     }
 }

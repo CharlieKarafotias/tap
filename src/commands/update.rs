@@ -12,7 +12,7 @@ pub(crate) struct Update {
 impl Default for Update {
     fn default() -> Self {
         Self {
-            name: "(--update)".to_string(),
+            name: "--update".to_string(),
             description: "Update Tap to the latest version".to_string(),
             args: [],
         }

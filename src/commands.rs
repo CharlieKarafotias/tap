@@ -58,31 +58,25 @@ pub(in crate::commands) fn display_commands() -> String {
     let help = help::Help::default();
     let version = version::Version::default();
 
-    let res = UsageTableBuilder::new("Usage")
+    let res = UsageTableBuilder::new("Usage:")
         .add_section(
-            "Opening Links:",
-            vec![Row::new(parent_entity), Row::new(here)],
-        )
-        .add_section(
-            "Adding, Updating, and Deleting Links:",
+            "Commands:",
             vec![
+                Row::new(parent_entity),
+                Row::new(here),
                 Row::new(add),
                 Row::new(delete),
                 Row::new(show),
                 Row::new(upsert),
-            ],
-        )
-        .add_section(
-            "Utility Commands:",
-            vec![
                 Row::new(init),
                 Row::new(import),
                 Row::new(export),
                 Row::new(tui),
                 Row::new(update),
+                Row::new(help),
+                Row::new(version),
             ],
         )
-        .add_section("Other Commands:", vec![Row::new(help), Row::new(version)])
         .build();
     res.to_string()
 }

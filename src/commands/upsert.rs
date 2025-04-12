@@ -12,11 +12,11 @@ pub(crate) struct Upsert {
 impl Default for Upsert {
     fn default() -> Self {
         Self {
-            name: "(-u, --upsert)".to_string(),
-            description: "Creates/Updates a Link in the provided Parent Entity".to_string(),
+            name: "-u, --upsert".to_string(),
+            description: "Create/update a link".to_string(),
             args: [
-                "<Parent Entity | here>".to_string(),
-                "<Link Name>".to_string(),
+                "<Parent|here>".to_string(),
+                "<Link>".to_string(),
                 "<Value>".to_string(),
             ],
         }

@@ -12,12 +12,9 @@ pub(crate) struct Delete {
 impl Default for Delete {
     fn default() -> Self {
         Self {
-            name: "(-d, --delete)".to_string(),
-            description: "Deletes an existing Link from the provided Parent Entity".to_string(),
-            args: [
-                "<Parent Entity | here>".to_string(),
-                "[Link Name]".to_string(),
-            ],
+            name: "-d, --delete".to_string(),
+            description: "Deletes a link".to_string(),
+            args: ["<Parent|here>".to_string(), "[Link]".to_string()],
         }
     }
 }

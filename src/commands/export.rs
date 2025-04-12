@@ -13,11 +13,8 @@ impl Default for Export {
     fn default() -> Self {
         Self {
             name: "--export".to_string(),
-            description: "Exports Tap links to a browser bookmark file".to_string(),
-            args: [
-                "<Browser | Tap>".to_string(),
-                "<destination folder>".to_string(),
-            ],
+            description: "Exports links to file".to_string(),
+            args: ["<Browser|Tap>".to_string(), "<dest>".to_string()],
         }
     }
 }

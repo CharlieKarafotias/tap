@@ -13,8 +13,8 @@ impl Default for Import {
     fn default() -> Self {
         Self {
             name: "--import".to_string(),
-            description: "Imports a bookmark file into Tap".to_string(),
-            args: ["<Browser | Tap>".to_string(), "<bookmark file>".to_string()],
+            description: "Imports links from file".to_string(),
+            args: ["<Browser|Tap>".to_string(), "<bookmark file>".to_string()],
         }
     }
 }

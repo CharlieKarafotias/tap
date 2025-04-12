@@ -12,12 +12,9 @@ pub(crate) struct Show {
 impl Default for Show {
     fn default() -> Self {
         Self {
-            name: "(-s, --show)".to_string(),
-            description: "Shows the value(s) of existing Link(s) in Parent Entity".to_string(),
-            args: [
-                "<Parent Entity | here>".to_string(),
-                "[Link Name]".to_string(),
-            ],
+            name: "-s, --show".to_string(),
+            description: "Shows links".to_string(),
+            args: ["<Parent|here>".to_string(), "[Link]".to_string()],
         }
     }
 }

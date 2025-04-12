@@ -12,8 +12,8 @@ pub(crate) struct Tui {
 impl Default for Tui {
     fn default() -> Self {
         Self {
-            name: "(--tui)".to_string(),
-            description: "Launches UI for adding, updating, and deleting links".to_string(),
+            name: "--tui".to_string(),
+            description: "Launch the interactive UI".to_string(),
             args: [],
         }
     }

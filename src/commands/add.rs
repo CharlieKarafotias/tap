@@ -12,11 +12,11 @@ pub(crate) struct Add {
 impl Default for Add {
     fn default() -> Self {
         Self {
-            name: "(-a, --add)".to_string(),
-            description: "Add a new Link to the provided Parent Entity".to_string(),
+            name: "-a, --add".to_string(),
+            description: "Add a new link".to_string(),
             args: [
-                "<Parent Entity | here>".to_string(),
-                "<Link Name>".to_string(),
+                "<Parent|here>".to_string(),
+                "<Link>".to_string(),
                 "<Value>".to_string(),
             ],
         }

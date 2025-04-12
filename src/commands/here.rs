@@ -13,9 +13,8 @@ impl Default for Here {
     fn default() -> Self {
         Self {
             name: "here".to_string(),
-            description: "Open 1/all Links of Parent Entity sharing name of current directory"
-                .to_string(),
-            args: ["[Link Name]".to_string()],
+            description: "Open 1+ links (uses folder name)".to_string(),
+            args: ["[Link]".to_string()],
         }
     }
 }

@@ -12,8 +12,8 @@ pub(crate) struct Init {
 impl Default for Init {
     fn default() -> Self {
         Self {
-            name: "(-i, --init)".to_string(),
-            description: "Initializes Tap (Shell Auto-Completion, etc.)".to_string(),
+            name: "-i, --init".to_string(),
+            description: "Setup Tap and shell completions".to_string(),
             args: [],
         }
     }
