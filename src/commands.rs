@@ -40,41 +40,27 @@ pub(in crate::commands) fn display_version() -> String {
 }
 
 pub(in crate::commands) fn display_commands() -> String {
-    // Opening Links:
-    let parent_entity = parent_entity::ParentEntity::default();
-    let here = here::Here::default();
-    // Adding, Updating, and Deleting Links:
-    let add = add::Add::default();
-    let delete = delete::Delete::default();
-    let show = show::Show::default();
-    let upsert = upsert::Upsert::default();
-    // Utility Commands:
-    let init = init::Init::default();
-    let import = import::Import::default();
-    let export = export::Export::default();
-    let tui = tui::Tui::default();
-    let update = update::Update::default();
-    // Other Commands:
-    let help = help::Help::default();
-    let version = version::Version::default();
-
     let res = UsageTableBuilder::new("Usage:")
         .add_section(
             "Commands:",
             vec![
-                Row::new(parent_entity),
-                Row::new(here),
-                Row::new(add),
-                Row::new(delete),
-                Row::new(show),
-                Row::new(upsert),
-                Row::new(init),
-                Row::new(import),
-                Row::new(export),
-                Row::new(tui),
-                Row::new(update),
-                Row::new(help),
-                Row::new(version),
+                // Opening Links:
+                Row::new(parent_entity::ParentEntity::default()),
+                Row::new(here::Here::default()),
+                // Adding, Updating, and Deleting Links:
+                Row::new(add::Add::default()),
+                Row::new(delete::Delete::default()),
+                Row::new(show::Show::default()),
+                Row::new(upsert::Upsert::default()),
+                // Utility Commands:
+                Row::new(init::Init::default()),
+                Row::new(import::Import::default()),
+                Row::new(export::Export::default()),
+                Row::new(tui::Tui::default()),
+                Row::new(update::Update::default()),
+                // Other Commands:
+                Row::new(help::Help::default()),
+                Row::new(version::Version::default()),
             ],
         )
         .build();
