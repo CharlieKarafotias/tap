@@ -1,4 +1,7 @@
-use crate::commands::{Command, CommandResult, display_version};
+use crate::{
+    commands::{Command, CommandResult, display_version},
+    utils::cli_usage_table::DisplayCommandAsRow,
+};
 
 pub(crate) struct Version {
     name: String,
@@ -40,6 +43,20 @@ impl Command for Version {
             }
             _ => Err(self.error_message()),
         }
+    }
+}
+
+impl DisplayCommandAsRow for Version {
+    fn args(&self) -> Vec<String> {
+        self.args.to_vec()
+    }
+
+    fn description(&self) -> String {
+        self.description.clone()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
     }
 }
 

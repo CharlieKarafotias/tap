@@ -1,4 +1,7 @@
-use crate::commands::{Command, CommandResult};
+use crate::{
+    commands::{Command, CommandResult},
+    utils::cli_usage_table::DisplayCommandAsRow,
+};
 
 pub(crate) struct Update {
     name: String,
@@ -40,6 +43,20 @@ impl Command for Update {
             }
             _ => Err(self.error_message()),
         }
+    }
+}
+
+impl DisplayCommandAsRow for Update {
+    fn args(&self) -> Vec<String> {
+        self.args.to_vec()
+    }
+
+    fn description(&self) -> String {
+        self.description.clone()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
     }
 }
 

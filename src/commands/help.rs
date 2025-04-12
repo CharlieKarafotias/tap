@@ -1,4 +1,7 @@
-use crate::commands::{Command, CommandResult, display_commands, display_version};
+use crate::{
+    commands::{Command, CommandResult, display_commands, display_version},
+    utils::cli_usage_table::DisplayCommandAsRow,
+};
 
 pub(crate) struct Help {
     name: String,
@@ -36,6 +39,20 @@ impl Command for Help {
         } else {
             Ok(CommandResult::Value(self.help_message()))
         }
+    }
+}
+
+impl DisplayCommandAsRow for Help {
+    fn args(&self) -> Vec<String> {
+        self.args.to_vec()
+    }
+
+    fn description(&self) -> String {
+        self.description.clone()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
     }
 }
 
