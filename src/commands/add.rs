@@ -1,6 +1,6 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
+    utils::{cli_usage_table::DisplayCommandAsRow, tap_data_store::data_store_cleanup},
 };
 
 pub(crate) struct Add {
@@ -51,9 +51,10 @@ impl Command for Add {
                 ("here", link_name, value) => Ok(CommandResult::Value(format!(
                     "TODO: Implement add functionality for here with Link Name {link_name} and Value {value}"
                 ))),
-                (parent_entity, link_name, value) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement add functionality for Parent Entity {parent_entity} with Link Name {link_name} and Value {value}"
-                ))),
+                (parent_entity, link_name, value) => Ok(CommandResult::Value({
+                    data_store_cleanup().map_err(|e| e.to_string())?;
+                    "Command ran".to_string()
+                })),
             },
             _ => Err(self.error_message()),
         }
