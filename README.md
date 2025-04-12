@@ -36,9 +36,9 @@ _DISCLAIMER: Tap is a work in progress and is under active development. Not all 
   - Bookmark managers have been around for years. Knowing this, Tap allows imports of the following browsers' bookmark manager files
     - Chrome, Edge, Firefox, Opera, Safari
   - So you're a programmer that wants to generate your own file of links into Tap? That's awesome, and also supported using YAML syntax. Below makes one new parent-entity called `tmgr` with a `repository` link (feel free to check out `tmgr` if your looking to manage tasks using a CLI!)
-    ```yaml
-    - tmgr:
-        repository: https://github.com/CharlieKarafotias/tmgr/tree/main
+    ```
+    tmgr->
+        repository|https://github.com/CharlieKarafotias/tmgr/tree/main
     ``` 
 - **Easily Migrate To A Browser Bookmark Manager**
   - So you have moved on from the terminal. That's okay, Tap can compile all your links down to a file for a quick exit.
@@ -56,6 +56,7 @@ Given the features provided by `tap` out of the box, some keywords must be reser
 
 Reserved List:
 - `here`
+- The `|` character can't be a part of the parent entity name
 - Parent entities can not be the following keywords:
   - `-a`
   - `--add`
@@ -92,3 +93,31 @@ It most likely won't! The only way reserved words will affect you is if you atte
    2. Make your changes according to the backlog issue.
    3. Add unit tests and ensure all tests are passing and no new linting issues are introduced. 
    4. Ensure you have installed [pre-commit](https://pre-commit.com/#install) on your computer. Once installed, run the command `pre-commit install` to add the pre-commit hooks. 
+
+### Underlying Data Storage
+
+Tap uses its own data storage format for parent entities and links. This data store is split into 2 files.
+- `.tap_data`: This file contains all the parent entities and their associated links.
+- `.tap_index`: This file contains the parent entities, their offsets and lengths for fast reads (measured in bytes).
+
+The structure of `.tap_data` is as follows:
+
+```
+parent_entity->
+  secret|https://www.google.com
+  secret 2|https://www.google.com
+Parent Entity 2->
+  secret|https://www.bing.com
+```
+
+The structure of `.tap_index` is as follows:
+
+```
+parent_entity|0|81
+Parent Entity 2|82|47
+```
+
+The use of `.tap_index` enables reads with the 
+[seek](https://doc.rust-lang.org/std/io/trait.Seek.html#tymethod.seek) trait to be performed. 
+This allows Tap to quickly navigate to the parent entity and its associated links without loading the entire file into
+memory. 
