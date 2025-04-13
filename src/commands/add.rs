@@ -1,6 +1,6 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::{cli_usage_table::DisplayCommandAsRow, tap_data_store::data_store_cleanup},
+    utils::cli_usage_table::DisplayCommandAsRow,
 };
 
 pub(crate) struct Add {
@@ -52,7 +52,7 @@ impl Command for Add {
                     "TODO: Implement add functionality for here with Link Name {link_name} and Value {value}"
                 ))),
                 (parent_entity, link_name, value) => Ok(CommandResult::Value({
-                    data_store_cleanup().map_err(|e| e.to_string())?;
+                    // data_store_init().map_err(|e| e.to_string())?;
                     "Command ran".to_string()
                 })),
             },
@@ -78,7 +78,6 @@ impl DisplayCommandAsRow for Add {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::export::Export;
 
     #[test]
     fn test_add_run_expected_help_arg() {

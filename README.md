@@ -56,7 +56,7 @@ Given the features provided by `tap` out of the box, some keywords must be reser
 
 Reserved List:
 - `here`
-- The `|` character can't be a part of the parent entity name
+- The `|` character can't be a part of the parent entity name or link name
 - Parent entities can not be the following keywords:
   - `-a`
   - `--add`

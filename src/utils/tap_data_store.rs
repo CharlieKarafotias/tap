@@ -1,4 +1,120 @@
-use std::{fmt, fs, fs::File, path::PathBuf};
+use std::{fmt, fs, fs::File, path::PathBuf, time::SystemTime};
+
+struct DataStore {
+    data_store: Option<PathBuf>,
+    index_store: Option<PathBuf>,
+}
+
+impl DataStore {
+    /// Creates the `tap_data` and `tap_index` data store files if they don't exist in the executable's parent directory.
+    ///
+    /// - When one of the files already exists, the path to the existing file is returned.
+    /// - When a file doesn't exist, it is created.
+    /// - If the file(s) can't be created, an error is returned with the message of the error.
+    fn new() -> Result<Self, TapDataStoreError> {
+        let executable_parent_dir = get_parent_dir_of_tap()?;
+        let tap_data_path = executable_parent_dir.join(".tap_data");
+        let tap_index_path = executable_parent_dir.join(".tap_index");
+        for (path, kind) in [
+            (
+                &tap_data_path,
+                TapDataStoreErrorKind::DataFileCreationFailed,
+            ),
+            (
+                &tap_index_path,
+                TapDataStoreErrorKind::IndexFileCreationFailed,
+            ),
+        ] {
+            if !path.exists() {
+                File::create(path).map_err(|e| TapDataStoreError {
+                    kind,
+                    message: e.to_string(),
+                })?;
+            }
+        }
+
+        Ok(DataStore {
+            data_store: Some(tap_data_path),
+            index_store: Some(tap_index_path),
+        })
+    }
+
+    #[cfg(test)]
+    /// Creates the `tap_data` and `tap_index` data store files in the current directory with
+    /// unique names. This is used in the testing environment to ensure that the files created
+    /// are unique to a single test run and can be deleted after the test is finished.
+    fn new_test() -> Result<Self, TapDataStoreError> {
+        let executable_parent_dir = get_parent_dir_of_tap()?;
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::CurrentTimeError,
+                message: e.to_string(),
+            })?;
+        let tap_data_path =
+            executable_parent_dir.join(format!(".tap_data_{}", timestamp.as_secs()));
+        let tap_index_path =
+            executable_parent_dir.join(format!(".tap_index_{}", timestamp.as_secs()));
+
+        for (path, kind) in [
+            (
+                &tap_data_path,
+                TapDataStoreErrorKind::DataFileCreationFailed,
+            ),
+            (
+                &tap_index_path,
+                TapDataStoreErrorKind::IndexFileCreationFailed,
+            ),
+        ] {
+            if !path.exists() {
+                File::create(path).map_err(|e| TapDataStoreError {
+                    kind,
+                    message: e.to_string(),
+                })?;
+            }
+        }
+
+        Ok(DataStore {
+            data_store: Some(tap_data_path),
+            index_store: Some(tap_index_path),
+        })
+    }
+
+    /// Deletes the `tap_data` and `tap_index` data store files. As a side effect, the `data_store`
+    /// and `index_store` are set to `None`
+    fn cleanup(&mut self) -> Result<(), TapDataStoreError> {
+        for (path, kind) in [
+            (
+                &self.data_store,
+                TapDataStoreErrorKind::DataFileDeletionFailed,
+            ),
+            (
+                &self.index_store,
+                TapDataStoreErrorKind::IndexFileDeletionFailed,
+            ),
+        ] {
+            if let Some(path) = path {
+                if path.exists() {
+                    fs::remove_file(path).map_err(|e| TapDataStoreError {
+                        kind,
+                        message: e.to_string(),
+                    })?;
+                }
+            }
+        }
+        self.data_store = None;
+        self.index_store = None;
+        Ok(())
+    }
+
+    pub fn data_store(&self) -> &Option<PathBuf> {
+        &self.data_store
+    }
+
+    pub fn index_store(&self) -> &Option<PathBuf> {
+        &self.index_store
+    }
+}
 
 /// Returns the parent directory of the current executable
 fn get_parent_dir_of_tap() -> Result<PathBuf, TapDataStoreError> {
@@ -15,88 +131,60 @@ fn get_parent_dir_of_tap() -> Result<PathBuf, TapDataStoreError> {
         .to_path_buf())
 }
 
-/// Creates the `tap_data` and `tap_index` data store files if they don't exist in the executable's parent directory.
-///
-/// When one of the files already exists, the path to the existing file is returned.
-/// When a file doesn't exist, this function creates them.
-/// If the file(s) can't be created, an error is returned with the message of the error.
-///
-/// NOTE:
-///   - When running tests, the files are created with the format `.tap_data_<timestamp>` and `.tap_index_<timestamp>`
-///     and should be deleted after the test suite is finished.
-///   - When running in production, the files are created in the executable's parent directory and persist.
-pub(crate) fn data_store_init() -> Result<(Option<PathBuf>, Option<PathBuf>), TapDataStoreError> {
-    let executable_parent_dir = get_parent_dir_of_tap()?;
-
-    // Check if test env or production env
-    let (tap_data_path, tap_index_path) = if cfg!(test) {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::CurrentTimeError,
-                message: e.to_string(),
-            })?;
-
-        let tap_data_path =
-            executable_parent_dir.join(format!(".tap_data_{}", timestamp.as_secs()));
-        let tap_index_path =
-            executable_parent_dir.join(format!(".tap_index_{}", timestamp.as_secs()));
-        (tap_data_path, tap_index_path)
-    } else {
-        let tap_data_path = executable_parent_dir.join(".tap_data");
-        let tap_index_path = executable_parent_dir.join(".tap_index");
-        (tap_data_path, tap_index_path)
-    };
-
-    let tap_data_path_exists = tap_data_path.exists();
-    let tap_index_path_exists = tap_index_path.exists();
-    if !tap_data_path_exists {
-        File::create(&tap_data_path).map_err(|e| TapDataStoreError {
-            kind: TapDataStoreErrorKind::DataFileCreationFailed,
-            message: e.to_string(),
-        })?;
-    }
-    if !tap_index_path_exists {
-        File::create(&tap_index_path).map_err(|e| TapDataStoreError {
-            kind: TapDataStoreErrorKind::DataFileCreationFailed,
-            message: e.to_string(),
-        })?;
-    }
-
-    Ok((Some(tap_data_path), Some(tap_index_path)))
-}
-
-/// Deletes the `tap_data` and `tap_index` data store files if they exist in the executable's
-/// parent directory.
-///
-/// NOTE:
-///   - This does not handle cleanup of test files at this time
-pub(crate) fn data_store_cleanup() -> Result<(), TapDataStoreError> {
-    let executable_parent_dir = get_parent_dir_of_tap()?;
-
-    let tap_data_path = executable_parent_dir.join(".tap_data");
-    let tap_index_path = executable_parent_dir.join(".tap_index");
-
-    if tap_data_path.exists() {
-        fs::remove_file(&tap_data_path).map_err(|e| TapDataStoreError {
-            kind: TapDataStoreErrorKind::DataFileDeletionFailed,
-            message: e.to_string(),
-        })?;
-    }
-    if tap_index_path.exists() {
-        fs::remove_file(&tap_index_path).map_err(|e| TapDataStoreError {
-            kind: TapDataStoreErrorKind::DataFileCreationFailed,
-            message: e.to_string(),
-        })?;
-    }
-
-    Ok(())
-}
-
-fn data_store_add() -> Result<(), TapDataStoreError> {
-    data_store_init()?;
-    todo!("Implement data store add");
-}
+/// Adds a link to the data store
+// fn data_store_add(
+//     parent: &str,
+//     link: &str,
+//     value: &str,
+//     test_data_path: Option<&PathBuf>,
+//     test_index_path: Option<&PathBuf>,
+// ) -> Result<(), TapDataStoreError> {
+//     // Initialize the data store (if it doesn't exist)
+//     data_store_init()?;
+//
+//     // Check rules for parent and link
+//     let reserved_keywords = vec![
+//         "-a",
+//         "--add",
+//         "-d",
+//         "--delete",
+//         "--export",
+//         "--help",
+//         "-i",
+//         "--init",
+//         "--import",
+//         "-s",
+//         "--show",
+//         "-u",
+//         "--update",
+//         "--upsert",
+//         "-v",
+//         "--version",
+//         "--parent-entity",
+//         "here",
+//         "|",
+//     ];
+//     if reserved_keywords.contains(&parent) {
+//         return Err(TapDataStoreError {
+//             kind: TapDataStoreErrorKind::ReservedKeyword,
+//             message: format!("Parent entity name {} is reserved", parent),
+//         });
+//     }
+//     if link.contains("|") {
+//         return Err(TapDataStoreError {
+//             kind: TapDataStoreErrorKind::VerticalBarInLinkName,
+//             message: format!(
+//                 "Link name {} contains a vertical bar '|' which is reserved",
+//                 link
+//             ),
+//         });
+//     }
+//
+//     // Add the parent entity, link and value
+//     // TODO: Implement data store add
+//     // Update the index
+//     Ok(())
+// }
 
 fn data_store_remove() {
     todo!("Implement data store remove");
@@ -119,6 +207,8 @@ pub enum TapDataStoreErrorKind {
     DataFileDeletionFailed,
     IndexFileCreationFailed,
     IndexFileDeletionFailed,
+    ReservedKeyword,
+    VerticalBarInLinkName,
 }
 
 #[derive(Debug)]
@@ -155,56 +245,77 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::IndexFileDeletionFailed => {
                 write!(f, "Index file deletion failed")
             }
+            TapDataStoreErrorKind::ReservedKeyword => write!(f, "Reserved keyword used"),
+            TapDataStoreErrorKind::VerticalBarInLinkName => {
+                write!(f, "Vertical bar '|' used in link name")
+            }
         }
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use std::fs;
-//     use super::*;
-//
-//     fn cleanup_test_file(path: PathBuf) {
-//         fs::remove_file(path).unwrap();
-//     }
-//
-//     #[test]
-//     fn test_data_store_init_create() {
-//         let res = data_store_init().unwrap();
-//         let tap_data_path = res.0.unwrap();
-//         let tap_index_path = res.1.unwrap();
-//
-//         assert!(&tap_data_path.exists());
-//         assert!(&tap_index_path.exists());
-//         assert!(&tap_data_path.starts_with(".tap_data"));
-//         assert!(&tap_index_path.starts_with(".tap_index"));
-//
-//         cleanup_test_file(tap_data_path);
-//         cleanup_test_file(tap_index_path);
-//     }
-//
-//     #[test]
-//     fn test_data_store_cleanup() {
-//         unimplemented!();
-//     }
-//
-//     #[test]
-//     fn test_data_store_add() {
-//         unimplemented!();
-//     }
-//
-//     #[test]
-//     fn test_data_store_remove() {
-//         unimplemented!();
-//     }
-//
-//     #[test]
-//     fn test_data_store_upsert() {
-//         unimplemented!();
-//     }
-//
-//     #[test]
-//     fn test_data_store_get() {
-//         unimplemented!();
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_data_store_init_create() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        let data_path = ds
+            .data_store()
+            .as_ref()
+            .expect("Could not get data store path");
+        let index_path = ds
+            .index_store()
+            .as_ref()
+            .expect("Could not get index store path");
+        assert!(&data_path.exists());
+        assert!(&index_path.exists());
+        assert!(&data_path.to_str().unwrap().contains(".tap_data"));
+        assert!(&index_path.to_str().unwrap().contains(".tap_index"));
+
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_data_store_cleanup() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        let data_path = ds
+            .data_store()
+            .clone()
+            .expect("Could not get data store path");
+        let index_path = ds
+            .index_store()
+            .clone()
+            .expect("Could not get index store path");
+        assert!(&data_path.exists());
+        assert!(&index_path.exists());
+
+        ds.cleanup().expect("Could not clean up data store");
+        assert!(!&data_path.exists());
+        assert!(!&index_path.exists());
+
+        assert!(ds.data_store().is_none());
+        assert!(ds.index_store().is_none());
+    }
+
+    // #[test]
+    // fn test_data_store_add_invalid_parent_name() {
+    //     let (test_data_path, test_index_path) = data_store_init().unwrap();
+    // }
+
+    //
+    //     #[test]
+    //     fn test_data_store_remove() {
+    //         unimplemented!();
+    //     }
+    //
+    //     #[test]
+    //     fn test_data_store_upsert() {
+    //         unimplemented!();
+    //     }
+    //
+    //     #[test]
+    //     fn test_data_store_get() {
+    //         unimplemented!();
+    //     }
+}

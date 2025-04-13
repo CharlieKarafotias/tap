@@ -91,7 +91,6 @@ impl DisplayCommandAsRow for Import {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::export::Export;
 
     #[test]
     fn test_import_expected_help_arg() {
