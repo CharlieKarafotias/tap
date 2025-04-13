@@ -120,9 +120,8 @@ mod tests {
             "https://google.com".to_string(),
         ];
         let cmd = Add::default();
-        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
-            "TODO: Implement add functionality for Parent Entity search-engines with Link Name google and Value https://google.com".to_string()
-        ));
+        let expected: Result<CommandResult, String> =
+            Ok(CommandResult::Value("Command ran".to_string()));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
