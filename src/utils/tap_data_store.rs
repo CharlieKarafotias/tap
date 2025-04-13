@@ -11,7 +11,7 @@ impl DataStore {
     /// - When one of the files already exists, the path to the existing file is returned.
     /// - When a file doesn't exist, it is created.
     /// - If the file(s) can't be created, an error is returned with the message of the error.
-    fn new() -> Result<Self, TapDataStoreError> {
+    pub fn new() -> Result<Self, TapDataStoreError> {
         let executable_parent_dir = get_parent_dir_of_tap()?;
         let tap_data_path = executable_parent_dir.join(".tap_data");
         let tap_index_path = executable_parent_dir.join(".tap_index");
@@ -107,6 +107,25 @@ impl DataStore {
         Ok(())
     }
 
+    pub fn add_link(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
+        todo!("Implement data store add link")
+    }
+
+    /// Reads one or all links from the parent in the data store (depending on if a link is specified).
+    pub fn read(&self, parent: &str, link: Option<&str>) -> Result<String, TapDataStoreError> {
+        todo!("Implement data store read")
+    }
+
+    /// Removes one or all links from the parent in the data store (depending on if a link is specified).
+    pub fn remove(&self, parent: &str, link: Option<&str>) -> Result<(), TapDataStoreError> {
+        todo!("Implement data store remove link")
+    }
+
+    /// Upsert a link in the data store
+    pub fn upsert(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
+        todo!("Implement data store upsert")
+    }
+
     pub fn data_store(&self) -> &Option<PathBuf> {
         &self.data_store
     }
@@ -131,74 +150,50 @@ fn get_parent_dir_of_tap() -> Result<PathBuf, TapDataStoreError> {
         .to_path_buf())
 }
 
-/// Adds a link to the data store
-// fn data_store_add(
-//     parent: &str,
-//     link: &str,
-//     value: &str,
-//     test_data_path: Option<&PathBuf>,
-//     test_index_path: Option<&PathBuf>,
-// ) -> Result<(), TapDataStoreError> {
-//     // Initialize the data store (if it doesn't exist)
-//     data_store_init()?;
-//
-//     // Check rules for parent and link
-//     let reserved_keywords = vec![
-//         "-a",
-//         "--add",
-//         "-d",
-//         "--delete",
-//         "--export",
-//         "--help",
-//         "-i",
-//         "--init",
-//         "--import",
-//         "-s",
-//         "--show",
-//         "-u",
-//         "--update",
-//         "--upsert",
-//         "-v",
-//         "--version",
-//         "--parent-entity",
-//         "here",
-//         "|",
-//     ];
-//     if reserved_keywords.contains(&parent) {
-//         return Err(TapDataStoreError {
-//             kind: TapDataStoreErrorKind::ReservedKeyword,
-//             message: format!("Parent entity name {} is reserved", parent),
-//         });
-//     }
-//     if link.contains("|") {
-//         return Err(TapDataStoreError {
-//             kind: TapDataStoreErrorKind::VerticalBarInLinkName,
-//             message: format!(
-//                 "Link name {} contains a vertical bar '|' which is reserved",
-//                 link
-//             ),
-//         });
-//     }
-//
-//     // Add the parent entity, link and value
-//     // TODO: Implement data store add
-//     // Update the index
-//     Ok(())
-// }
-
-fn data_store_remove() {
-    todo!("Implement data store remove");
+/// Checks if the parent and link names are valid and returns an error if they are not
+/// If they are valid, returns `Ok(())`
+fn validate_parent_and_link(parent: &str, link: &str) -> Result<(), TapDataStoreError> {
+    // Check rules for parent and link
+    let reserved_keywords = vec![
+        "-a",
+        "--add",
+        "-d",
+        "--delete",
+        "--export",
+        "--help",
+        "-i",
+        "--init",
+        "--import",
+        "-s",
+        "--show",
+        "-u",
+        "--update",
+        "--upsert",
+        "-v",
+        "--version",
+        "--parent-entity",
+        "here",
+        "|",
+    ];
+    if reserved_keywords.contains(&parent) {
+        return Err(TapDataStoreError {
+            kind: TapDataStoreErrorKind::ReservedKeyword,
+            message: format!("Parent entity name {} is reserved", parent),
+        });
+    }
+    if link.contains("|") {
+        return Err(TapDataStoreError {
+            kind: TapDataStoreErrorKind::VerticalBarInLinkName,
+            message: format!(
+                "Link name {} contains a vertical bar '|' which is reserved",
+                link
+            ),
+        });
+    }
+    Ok(())
 }
 
-fn data_store_upsert() {
-    todo!("Implement data store upsert");
-}
-
-fn data_store_get() {
-    todo!("Implement data store get");
-}
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TapDataStoreErrorKind {
     CurrentTimeError,
     ExecutablePathNotFound,
@@ -298,24 +293,41 @@ mod tests {
         assert!(ds.index_store().is_none());
     }
 
-    // #[test]
-    // fn test_data_store_add_invalid_parent_name() {
-    //     let (test_data_path, test_index_path) = data_store_init().unwrap();
-    // }
+    #[test]
+    fn test_validate_parent_valid() {
+        let parent = "valid-parent-name";
+        let link = "valid-link-name";
+        assert!(validate_parent_and_link(parent, link).is_ok());
+    }
 
-    //
-    //     #[test]
-    //     fn test_data_store_remove() {
-    //         unimplemented!();
-    //     }
-    //
-    //     #[test]
-    //     fn test_data_store_upsert() {
-    //         unimplemented!();
-    //     }
-    //
-    //     #[test]
-    //     fn test_data_store_get() {
-    //         unimplemented!();
-    //     }
+    #[test]
+    fn test_validate_parent_invalid() {
+        let parent = "--version";
+        let link = "valid-link-name";
+        let res = validate_parent_and_link(parent, link);
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::ReservedKeyword
+        );
+    }
+
+    #[test]
+    fn test_validate_link_invalid() {
+        let parent = "valid-parent-name";
+        let link = "|invalid-link-name";
+        let res = validate_parent_and_link(parent, link);
+        assert!(res.is_err());
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::VerticalBarInLinkName
+        );
+    }
+
+    #[test]
+    fn test_validate_link_valid() {
+        let parent = "valid-parent-name";
+        let link = "valid-link-name";
+        assert!(validate_parent_and_link(parent, link).is_ok());
+    }
 }
