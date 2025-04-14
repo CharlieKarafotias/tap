@@ -1,4 +1,10 @@
-use std::{fmt, fs, fs::File, io::Read, path::PathBuf};
+use std::io::Write;
+use std::{fmt, fs, fs::File, path::PathBuf};
+
+enum FileType {
+    Data,
+    Index,
+}
 
 struct DataStore {
     data_store: Option<PathBuf>,
@@ -50,9 +56,18 @@ impl DataStore {
         // Instead, this will create a unique file for each test using test name
         let thread = std::thread::current();
         let test_name = thread.name().expect("Could not get thread name");
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::CurrentTimeError,
+                message: e.to_string(),
+            })?
+            .as_millis();
 
-        let tap_data_path = executable_parent_dir.join(format!(".tap_data_{}", test_name));
-        let tap_index_path = executable_parent_dir.join(format!(".tap_index_{}", test_name));
+        let tap_data_path =
+            executable_parent_dir.join(format!(".tap_data_{}_{}", test_name, timestamp));
+        let tap_index_path =
+            executable_parent_dir.join(format!(".tap_index_{}_{:?}", test_name, timestamp));
 
         for (path, kind) in [
             (
@@ -103,51 +118,133 @@ impl DataStore {
         Ok(())
     }
 
+    fn read_file_to_string(&self, file_type: FileType) -> Result<String, TapDataStoreError> {
+        let path = match file_type {
+            FileType::Data => &self.data_store,
+            FileType::Index => &self.index_store,
+        }
+        .as_ref()
+        .ok_or(TapDataStoreError {
+            kind: TapDataStoreErrorKind::FilePathNotFound,
+            message: "File path not defined in data store structure".to_string(),
+        })?;
+
+        let res = fs::read_to_string(path).map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::FileReadFailed,
+            message: e.to_string(),
+        })?;
+        Ok(res)
+    }
     /// Finds the index of the parent in the index store (if it exists).
     ///
     /// - Returns `None` if the parent is not found in the index store.
     /// - Returns `(parent, offset, length)` if the parent is found in the index store
-    fn find_index(&self, parent: &str) -> Result<Option<(String, u32, u32)>, TapDataStoreError> {
-        let mut res: Option<(String, u32, u32)> = None;
-        let mut buffer = String::new();
-        // Open index file
-        if let Some(index_store) = &self.index_store {
-            let mut index_file = File::open(index_store).map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::IndexFileOpenFailed,
-                message: e.to_string(),
-            })?;
-            index_file
-                .read_to_string(&mut buffer)
-                .map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::IndexFileReadFailed,
+    fn find_index(
+        &self,
+        parent: &str,
+    ) -> Result<Option<(String, usize, usize)>, TapDataStoreError> {
+        let mut res: Option<(String, usize, usize)> = None;
+        let mut buffer = self.read_file_to_string(FileType::Index)?;
+        // Search for parent entity in file
+        let search_pattern = format!("{parent}|");
+        if let Some(index) = buffer.find(&search_pattern) {
+            let sub_str = &buffer[index..];
+            let mut elems: Vec<&str> = sub_str.splitn(3, '|').collect();
+
+            // for last element in elems, trim trailing newline/EOF character
+            elems[2] = elems[2]
+                .split('\n')
+                .next()
+                .ok_or(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::IndexFileParseFailed,
+                    message: "Could not parse the length of the parent entity".to_string(),
+                })?
+                .trim();
+
+            res = Some((
+                elems[0].to_string(),
+                elems[1].parse::<usize>().map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::IndexFileParseFailed,
                     message: e.to_string(),
-                })?;
-            // Search for parent entity in file
-            let search_pattern = format!("{parent}|");
-            if let Some(index) = buffer.find(&search_pattern) {
-                let sub_str = &buffer[index..];
-                let elems: Vec<&str> = sub_str.splitn(3, '|').collect();
-                res = Some((
-                    elems[0].to_string(),
-                    elems[1].parse::<u32>().map_err(|e| TapDataStoreError {
-                        kind: TapDataStoreErrorKind::IndexFileParseFailed,
-                        message: e.to_string(),
-                    })?,
-                    elems[2].parse::<u32>().map_err(|e| TapDataStoreError {
-                        kind: TapDataStoreErrorKind::IndexFileParseFailed,
-                        message: e.to_string(),
-                    })?,
-                ));
-            }
+                })?,
+                elems[2].parse::<usize>().map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::IndexFileParseFailed,
+                    message: e.to_string(),
+                })?,
+            ));
         }
         Ok(res)
     }
 
+    fn upsert_index(
+        &self,
+        parent: &str,
+        offset: usize,
+        length: usize,
+    ) -> Result<(), TapDataStoreError> {
+        let mut buffer = self.read_file_to_string(FileType::Index)?;
+        let val_to_insert = format!("{parent}|{offset}|{length}\n");
+        // If parent already exists in index file, update it
+        if let Some(index) = buffer.find(&format!("{parent}|")) {
+            let sub_str = &buffer[index..];
+            let new_line_index = sub_str.find('\n').ok_or(TapDataStoreError {
+                kind: TapDataStoreErrorKind::IndexFileParseFailed,
+                message: "Could not find the newline character for parent".to_string(),
+            })?;
+            // Also replace the newline character so +1 on new_line_index
+            buffer.replace_range(index..=new_line_index, val_to_insert.as_str());
+        } else {
+            // append new parent to end of index file
+            buffer.push_str(val_to_insert.trim());
+        }
+
+        let index_path = self.index_store.as_ref().ok_or(TapDataStoreError {
+            kind: TapDataStoreErrorKind::FilePathNotFound,
+            message: "Could not open index file".to_string(),
+        })?;
+        fs::write(index_path, buffer).map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::IndexFileWriteFailed,
+            message: e.to_string(),
+        })?;
+        Ok(())
+    }
+
     pub fn add_link(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
         validate_parent_and_link(parent, link)?;
-        // TODO: Add link
-        // TODO: Update index
-        todo!("Implement data store add link")
+        let mut buf = self.read_file_to_string(FileType::Data)?;
+        let data_path = self.data_store.as_ref().ok_or(TapDataStoreError {
+            kind: TapDataStoreErrorKind::FilePathNotFound,
+            message: "Could not open data file".to_string(),
+        })?;
+
+        if let Some((parent, offset, length)) = self.find_index(parent)? {
+            println!("parent: {parent}, offset: {offset}, length: {length}");
+            let new_elem = format!("{link}|{value}\n");
+            // TODO: try this function and if it works without overwriting initial content at offset then refactor out index, new_elem and parent and generalize the write
+            // Reference: https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html#tymethod.write_at
+            // TODO: update index when already exists
+            todo!("Implement data store add link to existing parent")
+        } else {
+            println!("parent not found in index file, adding new parent");
+            let mut str = String::new();
+            str.push_str(format!("{parent}->\n").as_str());
+            str.push_str(format!("{link}|{value}\n").as_str());
+            println!("str to insert at end of data file: {str}");
+            let mut f = File::open(data_path).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileWriteFailed,
+                message: e.to_string(),
+            })?;
+            // TODO: check this writes at end of file
+            f.write_all(str.as_bytes()).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileWriteFailed,
+                message: e.to_string(),
+            })?;
+
+            // Add parent to index
+            self.upsert_index(parent, buf.len(), str.len())?;
+        }
+
+        Ok(())
     }
 
     /// Reads one or all links from the parent in the data store (depending on if a link is specified).
@@ -239,11 +336,13 @@ pub enum TapDataStoreErrorKind {
     ExecutablePathParentDirectoryNotFound,
     DataFileCreationFailed,
     DataFileDeletionFailed,
+    FileReadFailed,
+    FilePathNotFound,
+    FileWriteFailed,
     IndexFileCreationFailed,
     IndexFileDeletionFailed,
-    IndexFileReadFailed,
-    IndexFileOpenFailed,
     IndexFileParseFailed,
+    IndexFileWriteFailed,
     ReservedKeyword,
     VerticalBarInLinkName,
 }
@@ -276,16 +375,20 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::DataFileDeletionFailed => {
                 write!(f, "Data file deletion failed")
             }
+            TapDataStoreErrorKind::FileReadFailed => write!(f, "File read failed"),
+            TapDataStoreErrorKind::FilePathNotFound => write!(f, "File path not found"),
+            TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
             TapDataStoreErrorKind::IndexFileCreationFailed => {
                 write!(f, "Index file creation failed")
             }
             TapDataStoreErrorKind::IndexFileDeletionFailed => {
                 write!(f, "Index file deletion failed")
             }
-            TapDataStoreErrorKind::IndexFileReadFailed => write!(f, "Index file read failed"),
-            TapDataStoreErrorKind::IndexFileOpenFailed => write!(f, "Index file open failed"),
             TapDataStoreErrorKind::IndexFileParseFailed => {
                 write!(f, "Index file parse failed")
+            }
+            TapDataStoreErrorKind::IndexFileWriteFailed => {
+                write!(f, "Index file write failed")
             }
             TapDataStoreErrorKind::ReservedKeyword => write!(f, "Reserved keyword used"),
             TapDataStoreErrorKind::VerticalBarInLinkName => {
@@ -404,6 +507,69 @@ mod tests {
         assert!(res.is_ok());
         let expected = Some(("parent-in-index-store".to_string(), 0, 20));
         assert_eq!(res.unwrap(), expected);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_find_index_middle() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        // Add parent to index
+        fs::write(
+            ds.index_store().as_ref().unwrap(),
+            "parent-1|0|20\nparent-2|20|40\nparent-3|40|60",
+        )
+        .unwrap();
+
+        let res = ds.find_index("parent-2");
+        println!("res: {res:?}");
+        assert!(res.is_ok());
+        let expected = Some(("parent-2".to_string(), 20, 40));
+        assert_eq!(res.unwrap(), expected);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_find_index_end() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        // Add parent to index
+        fs::write(
+            ds.index_store().as_ref().unwrap(),
+            "parent-1|0|20\nparent-2|20|40\nparent-3|40|60",
+        )
+        .unwrap();
+
+        let res = ds.find_index("parent-3");
+        assert!(res.is_ok());
+        let expected = Some(("parent-3".to_string(), 40, 60));
+        assert_eq!(res.unwrap(), expected);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_upsert_index_no_previous_index() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        let res = ds.upsert_index("parent", 0, 20);
+        assert!(res.is_ok());
+
+        let res_2 = ds.find_index("parent").expect("Could not find index");
+        let expected = Some(("parent".to_string(), 0, 20));
+        assert_eq!(res_2, expected);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_upsert_index_with_previous_index() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        // Add parent to index
+        fs::write(ds.index_store().as_ref().unwrap(), "parent|0|20\n").unwrap();
+        let res = ds
+            .upsert_index("parent", 0, 50)
+            .expect("Could not update index");
+
+        // TODO: determine why find_index does not work
+        let res_2 = ds.find_index("parent").expect("Could not find index");
+        let expected = Some(("parent".to_string(), 0, 50));
+        assert_eq!(res_2, expected);
         ds.cleanup().expect("Could not clean up data store");
     }
 }
