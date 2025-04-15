@@ -1,6 +1,7 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
+    utils::tap_data_store::DataStore,
 };
 
 pub(crate) struct Add {
@@ -51,10 +52,14 @@ impl Command for Add {
                 ("here", link_name, value) => Ok(CommandResult::Value(format!(
                     "TODO: Implement add functionality for here with Link Name {link_name} and Value {value}"
                 ))),
-                (parent_entity, link_name, value) => Ok(CommandResult::Value({
-                    // data_store_init().map_err(|e| e.to_string())?;
-                    "Command ran".to_string()
-                })),
+                (parent_entity, link_name, value) => {
+                    let ds = DataStore::new().map_err(|e| e.to_string())?;
+                    ds.add_link(parent_entity, link_name, value)
+                        .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value(format!(
+                        "Successfully added {link_name} with value {value} to parent entity {parent_entity}"
+                    )))
+                }
             },
             _ => Err(self.error_message()),
         }
@@ -121,7 +126,7 @@ mod tests {
         ];
         let cmd = Add::default();
         let expected: Result<CommandResult, String> =
-            Ok(CommandResult::Value("Command ran".to_string()));
+            Ok(CommandResult::Value("Successfully added google with value https://google.com to parent entity search-engines".to_string()));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }

@@ -1,3 +1,4 @@
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::{fmt, fs, fs::File, path::PathBuf};
 
@@ -6,7 +7,7 @@ enum FileType {
     Index,
 }
 
-struct DataStore {
+pub(crate) struct DataStore {
     data_store: Option<PathBuf>,
     index_store: Option<PathBuf>,
 }
@@ -209,6 +210,47 @@ impl DataStore {
         Ok(())
     }
 
+    /// Returns all links of the parent in the data store. If buffer is specified, it will use the buffer instead of reading from the data store file
+
+    fn get_links_of_parent(
+        &self,
+        parent: &str,
+        buf: Option<&str>,
+    ) -> Result<Vec<String>, TapDataStoreError> {
+        let data_file;
+        let mut links = Vec::new();
+        let mut buffer = if let Some(b) = buf {
+            b
+        } else {
+            data_file = self.read_file_to_string(FileType::Data)?;
+            if let Some((_, offset, length)) = self.find_index(parent)? {
+                &data_file[offset..(offset + length)]
+            } else {
+                // No index for the parent so no links to return
+                return Ok(links);
+            }
+        };
+        buffer = buffer
+            .strip_prefix(format!("{parent}->\n").as_str())
+            .ok_or(TapDataStoreError {
+                kind: TapDataStoreErrorKind::DataFileImproperFormat,
+                message: "Could not parse the parent from the data file".to_string(),
+            })?;
+
+        for line in buffer.lines() {
+            // If in format of another parent, then break
+            if line.ends_with("->") {
+                break;
+            }
+            let (link, _) = line.split_once('|').ok_or(TapDataStoreError {
+                kind: TapDataStoreErrorKind::DataFileImproperFormat,
+                message: "Could not parse the link from the data file".to_string(),
+            })?;
+            links.push(link.trim().to_string());
+        }
+        Ok(links)
+    }
+
     pub fn add_link(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
         validate_parent_and_link(parent, link)?;
         let mut buf = self.read_file_to_string(FileType::Data)?;
@@ -219,22 +261,26 @@ impl DataStore {
 
         if let Some((parent, offset, length)) = self.find_index(parent)? {
             println!("parent: {parent}, offset: {offset}, length: {length}");
+            // TODO: check for duplicate link already and error if exists (dup link error)
+            // Use new get_links_of_parent function to check if link already exists
+
             let new_elem = format!("{link}|{value}\n");
             // TODO: try this function and if it works without overwriting initial content at offset then refactor out index, new_elem and parent and generalize the write
             // Reference: https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html#tymethod.write_at
             // TODO: update index when already exists
             todo!("Implement data store add link to existing parent")
         } else {
-            println!("parent not found in index file, adding new parent");
             let mut str = String::new();
             str.push_str(format!("{parent}->\n").as_str());
-            str.push_str(format!("{link}|{value}\n").as_str());
-            println!("str to insert at end of data file: {str}");
-            let mut f = File::open(data_path).map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::FileWriteFailed,
-                message: e.to_string(),
-            })?;
-            // TODO: check this writes at end of file
+            str.push_str(format!("  {link}|{value}\n").as_str());
+
+            let mut f = OpenOptions::new()
+                .append(true)
+                .open(data_path)
+                .map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileOpenFailed,
+                    message: e.to_string(),
+                })?;
             f.write_all(str.as_bytes()).map_err(|e| TapDataStoreError {
                 kind: TapDataStoreErrorKind::FileWriteFailed,
                 message: e.to_string(),
@@ -336,9 +382,11 @@ pub enum TapDataStoreErrorKind {
     ExecutablePathParentDirectoryNotFound,
     DataFileCreationFailed,
     DataFileDeletionFailed,
+    DataFileImproperFormat,
     FileReadFailed,
     FilePathNotFound,
     FileWriteFailed,
+    FileOpenFailed,
     IndexFileCreationFailed,
     IndexFileDeletionFailed,
     IndexFileParseFailed,
@@ -375,8 +423,12 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::DataFileDeletionFailed => {
                 write!(f, "Data file deletion failed")
             }
+            TapDataStoreErrorKind::DataFileImproperFormat => {
+                write!(f, "Data file has an improper format")
+            }
             TapDataStoreErrorKind::FileReadFailed => write!(f, "File read failed"),
             TapDataStoreErrorKind::FilePathNotFound => write!(f, "File path not found"),
+            TapDataStoreErrorKind::FileOpenFailed => write!(f, "File open failed"),
             TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
             TapDataStoreErrorKind::IndexFileCreationFailed => {
                 write!(f, "Index file creation failed")
@@ -562,7 +614,7 @@ mod tests {
         let mut ds = DataStore::new_test().expect("Could not create data store");
         // Add parent to index
         fs::write(ds.index_store().as_ref().unwrap(), "parent|0|20\n").unwrap();
-        let res = ds
+        let _ = ds
             .upsert_index("parent", 0, 50)
             .expect("Could not update index");
 
@@ -570,6 +622,50 @@ mod tests {
         let res_2 = ds.find_index("parent").expect("Could not find index");
         let expected = Some(("parent".to_string(), 0, 50));
         assert_eq!(res_2, expected);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_links_of_parent_with_valid_buffer() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        let res = ds.get_links_of_parent("some-parent", Some("some-parent->\n  link1|value1\n  link2|value2\nother-parent->\n  link3|value3\n")).expect("Could not get links of parent");
+        assert_eq!(res, vec!["link1".to_string(), "link2".to_string()]);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_links_of_parent_with_valid_data_file() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        ds.add_link("another-parent", "my-link", "my-value")
+            .expect("Could not add link");
+        let res = ds
+            .get_links_of_parent("another-parent", None)
+            .expect("Could not get links of parent");
+        assert_eq!(res, vec!["my-link".to_string()]);
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_links_of_parent_empty_vec_when_no_parent() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        let res = ds
+            .get_links_of_parent("some-parent", None)
+            .expect("Could not get links of parent");
+        assert!(res.is_empty());
+        ds.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_links_of_parent_with_invalid_buffer() {
+        let mut ds = DataStore::new_test().expect("Could not create data store");
+        let res = ds.get_links_of_parent(
+            "some-parent",
+            Some("some-parent-\n  link1|value1\n  link2|value2\nother-parent->\n  link3|value3\n"),
+        );
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::DataFileImproperFormat
+        );
         ds.cleanup().expect("Could not clean up data store");
     }
 }
