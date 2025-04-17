@@ -1,5 +1,5 @@
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Seek, SeekFrom, Write};
 use std::{fmt, fs, fs::File, path::PathBuf};
 
 enum FileType {
@@ -12,6 +12,7 @@ pub(crate) struct DataStore {
     index_store: Option<PathBuf>,
 }
 
+// TODO: refactor for these to be pub methods & create one for private methods
 impl DataStore {
     /// Creates the `tap_data` and `tap_index` data store files if they don't exist in the executable's parent directory.
     ///
@@ -19,6 +20,10 @@ impl DataStore {
     /// - When a file doesn't exist, it is created.
     /// - If the file(s) can't be created, an error is returned with the message of the error.
     pub fn new() -> Result<Self, TapDataStoreError> {
+        #[cfg(test)]
+        if cfg!(test) {
+            return Self::new_test();
+        }
         let executable_parent_dir = get_parent_dir_of_tap()?;
         let tap_data_path = executable_parent_dir.join(".tap_data");
         let tap_index_path = executable_parent_dir.join(".tap_index");
@@ -136,6 +141,7 @@ impl DataStore {
         })?;
         Ok(res)
     }
+
     /// Finds the index of the parent in the index store (if it exists).
     ///
     /// - Returns `None` if the parent is not found in the index store.
@@ -145,7 +151,7 @@ impl DataStore {
         parent: &str,
     ) -> Result<Option<(String, usize, usize)>, TapDataStoreError> {
         let mut res: Option<(String, usize, usize)> = None;
-        let mut buffer = self.read_file_to_string(FileType::Index)?;
+        let buffer = self.read_file_to_string(FileType::Index)?;
         // Search for parent entity in file
         let search_pattern = format!("{parent}|");
         if let Some(index) = buffer.find(&search_pattern) {
@@ -185,7 +191,7 @@ impl DataStore {
     ) -> Result<(), TapDataStoreError> {
         let mut buffer = self.read_file_to_string(FileType::Index)?;
         let val_to_insert = format!("{parent}|{offset}|{length}\n");
-        // If parent already exists in index file, update it
+        // If parent already exists in index file, update it & update offsets for following parents
         if let Some(index) = buffer.find(&format!("{parent}|")) {
             let sub_str = &buffer[index..];
             let new_line_index = sub_str.find('\n').ok_or(TapDataStoreError {
@@ -194,9 +200,10 @@ impl DataStore {
             })?;
             // Also replace the newline character so +1 on new_line_index
             buffer.replace_range(index..=new_line_index, val_to_insert.as_str());
+            // TODO: update offsets for parents after the parent
         } else {
             // append new parent to end of index file
-            buffer.push_str(val_to_insert.trim());
+            buffer.push_str(val_to_insert.as_str());
         }
 
         let index_path = self.index_store.as_ref().ok_or(TapDataStoreError {
@@ -211,7 +218,7 @@ impl DataStore {
     }
 
     /// Returns all links of the parent in the data store. If buffer is specified, it will use the buffer instead of reading from the data store file
-
+    // TODO: Use index caching instead of reading whole data file (when read is implemented)
     fn get_links_of_parent(
         &self,
         parent: &str,
@@ -253,26 +260,40 @@ impl DataStore {
 
     pub fn add_link(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
         validate_parent_and_link(parent, link)?;
-        let mut buf = self.read_file_to_string(FileType::Data)?;
-        let data_path = self.data_store.as_ref().ok_or(TapDataStoreError {
+        let parent_idx = self.find_index(parent)?;
+        let data_path = self.data_store().as_ref().ok_or(TapDataStoreError {
             kind: TapDataStoreErrorKind::FilePathNotFound,
             message: "Could not open data file".to_string(),
         })?;
 
-        if let Some((parent, offset, length)) = self.find_index(parent)? {
-            println!("parent: {parent}, offset: {offset}, length: {length}");
-            // TODO: check for duplicate link already and error if exists (dup link error)
-            // Use new get_links_of_parent function to check if link already exists
+        if let Some((_, offset, length)) = parent_idx {
+            let mut buf = self.read_file_to_string(FileType::Data)?;
+            let existing_links = self.get_links_of_parent(parent, Some(&buf))?;
 
-            let new_elem = format!("{link}|{value}\n");
-            // TODO: try this function and if it works without overwriting initial content at offset then refactor out index, new_elem and parent and generalize the write
-            // Reference: https://doc.rust-lang.org/std/os/unix/fs/trait.FileExt.html#tymethod.write_at
-            // TODO: update index when already exists
-            todo!("Implement data store add link to existing parent")
+            // TODO: Could this also be upsert with additional param. If this is called upsert, and new param called update if exists bool
+            if existing_links.contains(&link.to_string()) {
+                return Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::LinkAlreadyExists,
+                    message: format!("Link {link} already exists for parent {parent}"),
+                });
+            }
+
+            // append link/value
+            // TODO: store updated values for index
+            let mut parent_entity_data = buf[offset..(offset + length)].to_string();
+            parent_entity_data.push_str(&format!("  {link}|{value}\n"));
+            buf.replace_range(offset..(offset + length), parent_entity_data.as_str());
+
+            fs::write(data_path, buf).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileWriteFailed,
+                message: e.to_string(),
+            })?;
+
+            // TODO: upsert_index will need to handle updating other index entries
+            self.upsert_index(parent, offset, parent_entity_data.len())?;
         } else {
-            let mut str = String::new();
-            str.push_str(format!("{parent}->\n").as_str());
-            str.push_str(format!("  {link}|{value}\n").as_str());
+            // No existing links, add link and update index
+            let str = format!("{parent}->\n  {link}|{value}\n");
 
             let mut f = OpenOptions::new()
                 .append(true)
@@ -281,13 +302,17 @@ impl DataStore {
                     kind: TapDataStoreErrorKind::FileOpenFailed,
                     message: e.to_string(),
                 })?;
+            let length_of_file_before_write =
+                f.seek(SeekFrom::End(0)).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileReadFailed,
+                    message: e.to_string(),
+                })?;
             f.write_all(str.as_bytes()).map_err(|e| TapDataStoreError {
                 kind: TapDataStoreErrorKind::FileWriteFailed,
                 message: e.to_string(),
             })?;
-
             // Add parent to index
-            self.upsert_index(parent, buf.len(), str.len())?;
+            self.upsert_index(parent, length_of_file_before_write as usize, str.len())?;
         }
 
         Ok(())
@@ -391,6 +416,7 @@ pub enum TapDataStoreErrorKind {
     IndexFileDeletionFailed,
     IndexFileParseFailed,
     IndexFileWriteFailed,
+    LinkAlreadyExists,
     ReservedKeyword,
     VerticalBarInLinkName,
 }
@@ -441,6 +467,9 @@ impl fmt::Display for TapDataStoreErrorKind {
             }
             TapDataStoreErrorKind::IndexFileWriteFailed => {
                 write!(f, "Index file write failed")
+            }
+            TapDataStoreErrorKind::LinkAlreadyExists => {
+                write!(f, "Link already exists")
             }
             TapDataStoreErrorKind::ReservedKeyword => write!(f, "Reserved keyword used"),
             TapDataStoreErrorKind::VerticalBarInLinkName => {

@@ -84,6 +84,9 @@ impl DisplayCommandAsRow for Add {
 mod tests {
     use super::*;
 
+    // TODO: Need an after each to clean up created_test datastore files.
+    // Maybe we can add a drop that only compiles in cfg(test) so we get this for free?
+
     #[test]
     fn test_add_run_expected_help_arg() {
         let args: Vec<String> = vec!["--help".to_string()];
