@@ -56,7 +56,23 @@ impl Data {
         link: String,
         value: String,
     ) -> Result<(), TapDataStoreError> {
-        todo!("Impl add link for Data")
+        validate_parent(&parent)?;
+        validate_link(&link)?;
+        if let Some((_, links)) = self.state.iter_mut().find(|(p, _)| p == &parent) {
+            if links.iter().any(|(l, _)| l == &link) {
+                return Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::LinkAlreadyExists,
+                    message: format!("Link {link} already exists for parent {parent}"),
+                });
+            }
+            links.push((link.trim().to_string(), value.trim().to_string()));
+        } else {
+            self.state.push((
+                parent,
+                vec![(link.trim().to_string(), value.trim().to_string())],
+            ));
+        }
+        Ok(())
     }
 
     pub fn get(&self, parent: String, link: Option<String>) -> Result<String, TapDataStoreError> {
@@ -79,7 +95,7 @@ impl Data {
 
 #[cfg(test)]
 mod data_public {
-    use super::{Data, FileType, get_test_file_path};
+    use super::{Data, FileType, TapDataStoreErrorKind, get_test_file_path};
     use std::fs;
     use std::path::PathBuf;
 
@@ -127,6 +143,84 @@ mod data_public {
                     ]
                 ),
             ]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_add_link_when_parent_doesnt_exist() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        let res = data.add_link(
+            "parent1".to_string(),
+            "link1".to_string(),
+            "value1".to_string(),
+        );
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "parent1".to_string(),
+                vec![("link1".to_string(), "value1".to_string())]
+            )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_add_link_when_link_doesnt_exist() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![
+                ("google".to_string(), "www.google.com".to_string()),
+                ("yahoo".to_string(), "www.yahoo.com".to_string()),
+            ],
+        )];
+        let res = data.add_link(
+            "search-engines".to_string(),
+            "link1".to_string(),
+            "value1".to_string(),
+        );
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![
+                    ("google".to_string(), "www.google.com".to_string()),
+                    ("yahoo".to_string(), "www.yahoo.com".to_string()),
+                    ("link1".to_string(), "value1".to_string())
+                ]
+            )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_add_link_when_link_already_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.add_link(
+            "search-engines".to_string(),
+            "google".to_string(),
+            "something else".to_string(),
+        );
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::LinkAlreadyExists
+        );
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![("google".to_string(), "www.google.com".to_string()),]
+            )]
         );
         data.cleanup().expect("Could not clean up data store");
     }
@@ -215,17 +309,17 @@ impl Data {
             .iter()
             .map(|(parent, links)| {
                 let mut sorted_links = links.clone();
-                sorted_links.sort_by(|a, b| a.0.cmp(&b.0));
+                sorted_links.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
                 (parent.clone(), sorted_links)
             })
             .collect();
-        sorted_state.sort_by(|a, b| a.0.cmp(&b.0));
+        sorted_state.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
 
         let mut res = String::new();
         for (parent, links) in sorted_state {
-            res.push_str(&format!("{}->\n", parent));
+            res.push_str(&format!("{}->\n", parent.trim()));
             for (link, value) in links {
-                res.push_str(&format!("  {}|{}\n", link, value));
+                res.push_str(&format!("  {}|{}\n", link.trim(), value.trim()));
             }
         }
         res
