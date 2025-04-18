@@ -1,5 +1,3 @@
-use std::fs::OpenOptions;
-use std::io::{Seek, SeekFrom, Write};
 use std::{fmt, fs, fs::File, path::PathBuf};
 
 enum FileType {
@@ -8,341 +6,362 @@ enum FileType {
 }
 
 pub(crate) struct DataStore {
-    data_store: Option<PathBuf>,
-    index_store: Option<PathBuf>,
+    data: Data,
+    index: Index,
 }
 
-// TODO: refactor for these to be pub methods & create one for private methods
-impl DataStore {
-    /// Creates the `tap_data` and `tap_index` data store files if they don't exist in the executable's parent directory.
-    ///
-    /// - When one of the files already exists, the path to the existing file is returned.
-    /// - When a file doesn't exist, it is created.
-    /// - If the file(s) can't be created, an error is returned with the message of the error.
-    pub fn new() -> Result<Self, TapDataStoreError> {
-        #[cfg(test)]
-        if cfg!(test) {
-            return Self::new_test();
-        }
-        let executable_parent_dir = get_parent_dir_of_tap()?;
-        let tap_data_path = executable_parent_dir.join(".tap_data");
-        let tap_index_path = executable_parent_dir.join(".tap_index");
-        for (path, kind) in [
-            (
-                &tap_data_path,
-                TapDataStoreErrorKind::DataFileCreationFailed,
-            ),
-            (
-                &tap_index_path,
-                TapDataStoreErrorKind::IndexFileCreationFailed,
-            ),
-        ] {
-            if !path.exists() {
-                File::create_new(path).map_err(|e| TapDataStoreError {
-                    kind,
-                    message: e.to_string(),
+struct Data {
+    path: PathBuf,
+    state: Vec<(String, Vec<(String, String)>)>, // parent, (link, value)
+}
+
+// Publicly exposed
+impl Data {
+    pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
+        if let Some(path) = path {
+            if path.exists() {
+                let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileReadFailed,
+                    message: format!("Could not read data file at {}: {e}", path.display()),
                 })?;
-            }
-        }
-
-        Ok(DataStore {
-            data_store: Some(tap_data_path),
-            index_store: Some(tap_index_path),
-        })
-    }
-
-    #[cfg(test)]
-    /// Creates the `tap_data` and `tap_index` data store files in the current directory with
-    /// unique names. This is used in the testing environment to ensure that the files created
-    /// are unique to a single test run and can be deleted after the test is finished.
-    fn new_test() -> Result<Self, TapDataStoreError> {
-        let executable_parent_dir = get_parent_dir_of_tap()?;
-
-        // NOTE: Workaround where tests running at same time instant were using same file
-        // Instead, this will create a unique file for each test using test name
-        let thread = std::thread::current();
-        let test_name = thread.name().expect("Could not get thread name");
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::CurrentTimeError,
-                message: e.to_string(),
-            })?
-            .as_millis();
-
-        let tap_data_path =
-            executable_parent_dir.join(format!(".tap_data_{}_{}", test_name, timestamp));
-        let tap_index_path =
-            executable_parent_dir.join(format!(".tap_index_{}_{:?}", test_name, timestamp));
-
-        for (path, kind) in [
-            (
-                &tap_data_path,
-                TapDataStoreErrorKind::DataFileCreationFailed,
-            ),
-            (
-                &tap_index_path,
-                TapDataStoreErrorKind::IndexFileCreationFailed,
-            ),
-        ] {
-            File::create_new(path).map_err(|e| TapDataStoreError {
-                kind,
-                message: e.to_string(),
-            })?;
-        }
-
-        Ok(DataStore {
-            data_store: Some(tap_data_path),
-            index_store: Some(tap_index_path),
-        })
-    }
-
-    /// Deletes the `tap_data` and `tap_index` data store files. As a side effect, the `data_store`
-    /// and `index_store` are set to `None`
-    fn cleanup(&mut self) -> Result<(), TapDataStoreError> {
-        for (path, kind) in [
-            (
-                &self.data_store,
-                TapDataStoreErrorKind::DataFileDeletionFailed,
-            ),
-            (
-                &self.index_store,
-                TapDataStoreErrorKind::IndexFileDeletionFailed,
-            ),
-        ] {
-            if let Some(path) = path {
-                if path.exists() {
-                    fs::remove_file(path).map_err(|e| TapDataStoreError {
-                        kind,
-                        message: e.to_string(),
-                    })?;
-                }
-            }
-        }
-        self.data_store = None;
-        self.index_store = None;
-        Ok(())
-    }
-
-    fn read_file_to_string(&self, file_type: FileType) -> Result<String, TapDataStoreError> {
-        let path = match file_type {
-            FileType::Data => &self.data_store,
-            FileType::Index => &self.index_store,
-        }
-        .as_ref()
-        .ok_or(TapDataStoreError {
-            kind: TapDataStoreErrorKind::FilePathNotFound,
-            message: "File path not defined in data store structure".to_string(),
-        })?;
-
-        let res = fs::read_to_string(path).map_err(|e| TapDataStoreError {
-            kind: TapDataStoreErrorKind::FileReadFailed,
-            message: e.to_string(),
-        })?;
-        Ok(res)
-    }
-
-    /// Finds the index of the parent in the index store (if it exists).
-    ///
-    /// - Returns `None` if the parent is not found in the index store.
-    /// - Returns `(parent, offset, length)` if the parent is found in the index store
-    fn find_index(
-        &self,
-        parent: &str,
-    ) -> Result<Option<(String, usize, usize)>, TapDataStoreError> {
-        let mut res: Option<(String, usize, usize)> = None;
-        let buffer = self.read_file_to_string(FileType::Index)?;
-        // Search for parent entity in file
-        let search_pattern = format!("{parent}|");
-        if let Some(index) = buffer.find(&search_pattern) {
-            let sub_str = &buffer[index..];
-            let mut elems: Vec<&str> = sub_str.splitn(3, '|').collect();
-
-            // for last element in elems, trim trailing newline/EOF character
-            elems[2] = elems[2]
-                .split('\n')
-                .next()
-                .ok_or(TapDataStoreError {
-                    kind: TapDataStoreErrorKind::IndexFileParseFailed,
-                    message: "Could not parse the length of the parent entity".to_string(),
-                })?
-                .trim();
-
-            res = Some((
-                elems[0].to_string(),
-                elems[1].parse::<usize>().map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::IndexFileParseFailed,
-                    message: e.to_string(),
-                })?,
-                elems[2].parse::<usize>().map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::IndexFileParseFailed,
-                    message: e.to_string(),
-                })?,
-            ));
-        }
-        Ok(res)
-    }
-
-    fn upsert_index(
-        &self,
-        parent: &str,
-        offset: usize,
-        length: usize,
-    ) -> Result<(), TapDataStoreError> {
-        let mut buffer = self.read_file_to_string(FileType::Index)?;
-        let val_to_insert = format!("{parent}|{offset}|{length}\n");
-        // If parent already exists in index file, update it & update offsets for following parents
-        if let Some(index) = buffer.find(&format!("{parent}|")) {
-            let sub_str = &buffer[index..];
-            let new_line_index = sub_str.find('\n').ok_or(TapDataStoreError {
-                kind: TapDataStoreErrorKind::IndexFileParseFailed,
-                message: "Could not find the newline character for parent".to_string(),
-            })?;
-            // Also replace the newline character so +1 on new_line_index
-            buffer.replace_range(index..=new_line_index, val_to_insert.as_str());
-            // TODO: update offsets for parents after the parent
-        } else {
-            // append new parent to end of index file
-            buffer.push_str(val_to_insert.as_str());
-        }
-
-        let index_path = self.index_store.as_ref().ok_or(TapDataStoreError {
-            kind: TapDataStoreErrorKind::FilePathNotFound,
-            message: "Could not open index file".to_string(),
-        })?;
-        fs::write(index_path, buffer).map_err(|e| TapDataStoreError {
-            kind: TapDataStoreErrorKind::IndexFileWriteFailed,
-            message: e.to_string(),
-        })?;
-        Ok(())
-    }
-
-    /// Returns all links of the parent in the data store. If buffer is specified, it will use the buffer instead of reading from the data store file
-    // TODO: Use index caching instead of reading whole data file (when read is implemented)
-    fn get_links_of_parent(
-        &self,
-        parent: &str,
-        buf: Option<&str>,
-    ) -> Result<Vec<String>, TapDataStoreError> {
-        let data_file;
-        let mut links = Vec::new();
-        let mut buffer = if let Some(b) = buf {
-            b
-        } else {
-            data_file = self.read_file_to_string(FileType::Data)?;
-            if let Some((_, offset, length)) = self.find_index(parent)? {
-                &data_file[offset..(offset + length)]
+                let state = Data::parse_file(&file_as_str)?;
+                Ok(Self { path, state })
             } else {
-                // No index for the parent so no links to return
-                return Ok(links);
+                File::create_new(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileCreateFailed,
+                    message: format!("Could not create data file: {e}"),
+                })?;
+                Ok(Self {
+                    path,
+                    state: vec![],
+                })
             }
-        };
-        buffer = buffer
-            .strip_prefix(format!("{parent}->\n").as_str())
-            .ok_or(TapDataStoreError {
-                kind: TapDataStoreErrorKind::DataFileImproperFormat,
-                message: "Could not parse the parent from the data file".to_string(),
+        } else {
+            let executable_parent_dir = get_parent_dir_of_tap()?;
+            let tap_data_path = executable_parent_dir.join(".tap_data");
+            File::create_new(&tap_data_path).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileCreateFailed,
+                message: format!("Could not create data file: {e}"),
             })?;
-
-        for line in buffer.lines() {
-            // If in format of another parent, then break
-            if line.ends_with("->") {
-                break;
-            }
-            let (link, _) = line.split_once('|').ok_or(TapDataStoreError {
-                kind: TapDataStoreErrorKind::DataFileImproperFormat,
-                message: "Could not parse the link from the data file".to_string(),
-            })?;
-            links.push(link.trim().to_string());
+            Ok(Self {
+                path: tap_data_path,
+                state: vec![],
+            })
         }
-        Ok(links)
     }
 
-    pub fn add_link(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
-        validate_parent_and_link(parent, link)?;
-        let parent_idx = self.find_index(parent)?;
-        let data_path = self.data_store().as_ref().ok_or(TapDataStoreError {
-            kind: TapDataStoreErrorKind::FilePathNotFound,
-            message: "Could not open data file".to_string(),
-        })?;
+    pub fn add_link(
+        &mut self,
+        parent: String,
+        link: String,
+        value: String,
+    ) -> Result<(), TapDataStoreError> {
+        todo!("Impl add link for Data")
+    }
 
-        if let Some((_, offset, length)) = parent_idx {
-            let mut buf = self.read_file_to_string(FileType::Data)?;
-            let existing_links = self.get_links_of_parent(parent, Some(&buf))?;
+    pub fn get(&self, parent: String, link: Option<String>) -> Result<String, TapDataStoreError> {
+        todo!("Impl get (links, link) for Data")
+    }
 
-            // TODO: Could this also be upsert with additional param. If this is called upsert, and new param called update if exists bool
-            if existing_links.contains(&link.to_string()) {
+    pub fn remove_link(&mut self, parent: String, link: String) -> Result<(), TapDataStoreError> {
+        todo!("Impl remove link for Data")
+    }
+
+    pub fn upsert_link(
+        &mut self,
+        parent: String,
+        link: String,
+        value: String,
+    ) -> Result<(), TapDataStoreError> {
+        todo!("Impl upsert link for Data")
+    }
+}
+
+#[cfg(test)]
+mod data_public {
+    use super::{Data, FileType, get_test_file_path};
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_new_no_path_correct_file_name() {
+        let expected_file_name = ".tap_data";
+        let mut data = Data::new(None).unwrap();
+        assert!(data.path.to_str().unwrap().ends_with(expected_file_name));
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_new_with_path_correct_file_name() {
+        let expected_file_name =
+            get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(PathBuf::from(&expected_file_name))).unwrap();
+        assert_eq!(data.path, expected_file_name);
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_set_state_correct() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(
+            &data_path,
+            "parent1->\nlink1|value1\nlink2|value2\nparent2 ->\nlink3|value3\nlink4|value4",
+        )
+        .unwrap();
+        let mut data = Data::new(Some(data_path)).unwrap();
+        assert_eq!(
+            data.state,
+            vec![
+                (
+                    "parent1".to_string(),
+                    vec![
+                        ("link1".to_string(), "value1".to_string()),
+                        ("link2".to_string(), "value2".to_string())
+                    ]
+                ),
+                (
+                    "parent2 ".to_string(),
+                    vec![
+                        ("link3".to_string(), "value3".to_string()),
+                        ("link4".to_string(), "value4".to_string())
+                    ]
+                ),
+            ]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+}
+
+// Private
+impl Data {
+    fn parse_file(
+        file_as_str: &str,
+    ) -> Result<Vec<(String, Vec<(String, String)>)>, TapDataStoreError> {
+        fn no_parent_error(
+            parent: &str,
+            links: &[(String, String)],
+        ) -> Result<(), TapDataStoreError> {
+            if !links.is_empty() && parent.is_empty() {
                 return Err(TapDataStoreError {
-                    kind: TapDataStoreErrorKind::LinkAlreadyExists,
-                    message: format!("Link {link} already exists for parent {parent}"),
+                    kind: TapDataStoreErrorKind::ParseError,
+                    message: format!(
+                        "Links in a data file must have a parent. The following links do not have a parent: {}",
+                        links
+                            .iter()
+                            .map(|(l, _)| l.to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    ),
                 });
             }
-
-            // append link/value
-            // TODO: store updated values for index
-            let mut parent_entity_data = buf[offset..(offset + length)].to_string();
-            parent_entity_data.push_str(&format!("  {link}|{value}\n"));
-            buf.replace_range(offset..(offset + length), parent_entity_data.as_str());
-
-            fs::write(data_path, buf).map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::FileWriteFailed,
-                message: e.to_string(),
-            })?;
-
-            // TODO: upsert_index will need to handle updating other index entries
-            self.upsert_index(parent, offset, parent_entity_data.len())?;
-        } else {
-            // No existing links, add link and update index
-            let str = format!("{parent}->\n  {link}|{value}\n");
-
-            let mut f = OpenOptions::new()
-                .append(true)
-                .open(data_path)
-                .map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::FileOpenFailed,
-                    message: e.to_string(),
-                })?;
-            let length_of_file_before_write =
-                f.seek(SeekFrom::End(0)).map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::FileReadFailed,
-                    message: e.to_string(),
-                })?;
-            f.write_all(str.as_bytes()).map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::FileWriteFailed,
-                message: e.to_string(),
-            })?;
-            // Add parent to index
-            self.upsert_index(parent, length_of_file_before_write as usize, str.len())?;
+            Ok(())
         }
 
-        Ok(())
+        fn update_state_reset_temps(
+            parent: &mut str,
+            links: &mut Vec<(String, String)>,
+            state: &mut Vec<(String, Vec<(String, String)>)>,
+        ) {
+            if !parent.is_empty() && !links.is_empty() {
+                state.push((parent.to_string(), links.clone()));
+                links.clear();
+            }
+        }
+
+        let mut state = vec![];
+        let mut temp_parent = String::new();
+        let mut temp_links: Vec<(String, String)> = vec![];
+        for line in file_as_str.lines() {
+            if line.ends_with("->") {
+                // This is a parent line
+                // If links not empty but no parent, this is an error
+                no_parent_error(&temp_parent, &temp_links)?;
+                // If temp holders not empty, done with current parent, add to state
+                update_state_reset_temps(&mut temp_parent, &mut temp_links, &mut state);
+                // NOTE: silent error if parent has no links (this is fine, not stored in internal state)
+                temp_parent = line.trim_end_matches("->").to_string();
+                validate_parent(&temp_parent)?;
+            } else if line.contains('|') {
+                // This is a link line
+                // TODO: in future, would be nice to support escaped pipes
+                let (link, value) = line
+                    .split_once('|')
+                    .ok_or(TapDataStoreError {
+                        kind: TapDataStoreErrorKind::ParseError,
+                        message: "A link/value line of a data file is expected to contain '|' character separating link and value. For example, google|https://google.com".to_string(),
+                    })?;
+                validate_link(link)?;
+                temp_links.push((link.to_string(), value.to_string()));
+            } else {
+                return Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::ParseError,
+                    message: format!(
+                        "Unknown format for data file. Line '{line}' does not match expected format of parent ->\\n link|value"
+                    ),
+                });
+            }
+        }
+        // When out of lines, update state
+        no_parent_error(&temp_parent, &temp_links)?;
+        update_state_reset_temps(&mut temp_parent, &mut temp_links, &mut state);
+
+        Ok(state)
     }
 
-    /// Reads one or all links from the parent in the data store (depending on if a link is specified).
-    pub fn read(&self, parent: &str, link: Option<&str>) -> Result<String, TapDataStoreError> {
-        todo!("Implement data store read")
+    fn state_to_file_string(&self) -> String {
+        todo!("Impl state to file str for Data")
     }
 
-    /// Removes one or all links from the parent in the data store (depending on if a link is specified).
-    pub fn remove(&self, parent: &str, link: Option<&str>) -> Result<(), TapDataStoreError> {
-        todo!("Implement data store remove link")
-    }
-
-    /// Upsert a link in the data store
-    pub fn upsert(&self, parent: &str, link: &str, value: &str) -> Result<(), TapDataStoreError> {
-        todo!("Implement data store upsert")
-    }
-
-    pub fn data_store(&self) -> &Option<PathBuf> {
-        &self.data_store
-    }
-
-    pub fn index_store(&self) -> &Option<PathBuf> {
-        &self.index_store
+    fn save_to_file(&self) {
+        let str = self.state_to_file_string();
+        // write str to file
+        todo!("Impl save to file for Data")
     }
 }
 
-/// Returns the parent directory of the current executable
+#[cfg(test)]
+mod data_private {
+    use super::{Data, FileType, TapDataStoreErrorKind, get_test_file_path};
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn cleanup_test_file(file_path: &PathBuf) {
+        fs::remove_file(file_path).expect("Could not remove test file");
+    }
+
+    #[test]
+    fn test_parse_file_empty() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(&data_path, "").unwrap();
+        let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str())
+            .expect("Could not parse file");
+        assert_eq!(res, vec![]);
+        cleanup_test_file(&data_path);
+    }
+    #[test]
+    fn test_parse_file_valid_one_parent() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(&data_path, "parent1->\nlink1|value1\nlink2|value2").unwrap();
+        let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str())
+            .expect("Could not parse file");
+        assert_eq!(
+            res,
+            vec![(
+                "parent1".to_string(),
+                vec![
+                    ("link1".to_string(), "value1".to_string()),
+                    ("link2".to_string(), "value2".to_string())
+                ]
+            ),]
+        );
+        cleanup_test_file(&data_path);
+    }
+
+    #[test]
+    fn test_parse_file_valid_two_parents() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(&data_path, "search engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\ncoding->\ngh|https://github.com").unwrap();
+        let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str())
+            .expect("Could not parse file");
+        assert_eq!(
+            res,
+            vec![
+                (
+                    "search engines".to_string(),
+                    vec![
+                        ("google".to_string(), "www.google.com".to_string()),
+                        ("yahoo".to_string(), "www.yahoo.com".to_string())
+                    ]
+                ),
+                (
+                    "coding".to_string(),
+                    vec![("gh".to_string(), "https://github.com".to_string())]
+                ),
+            ]
+        );
+        cleanup_test_file(&data_path);
+    }
+
+    #[test]
+    fn test_parse_file_invalid_links() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(
+            &data_path,
+            "search engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\ninvalid link",
+        )
+        .unwrap();
+        let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str());
+        assert_eq!(res.unwrap_err().kind, TapDataStoreErrorKind::ParseError);
+        cleanup_test_file(&data_path);
+    }
+
+    #[test]
+    fn test_parse_file_invalid_parent() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(&data_path, "invalid parent->\n").unwrap();
+        let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str())
+            .expect("Could not parse file");
+        // Silent error, if parent has no links no big deal
+        assert_eq!(res, vec![]);
+        cleanup_test_file(&data_path);
+    }
+
+    #[test]
+    fn test_parse_file_invalid_random_file() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(
+            &data_path,
+            "Something that is completely not a data file was read",
+        )
+        .unwrap();
+        let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str());
+        assert_eq!(res.unwrap_err().kind, TapDataStoreErrorKind::ParseError);
+        cleanup_test_file(&data_path);
+    }
+}
+
+// Test only
+#[cfg(test)]
+impl Data {
+    fn cleanup(&mut self) -> Result<(), TapDataStoreError> {
+        fs::remove_file(&self.path).map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::FileDeleteFailed,
+            message: format!("Could not delete data file: {}", e),
+        })?;
+        Ok(())
+    }
+}
+
+struct Index {
+    path: PathBuf,
+    state: Vec<(String, usize, usize)>, // parent, offset, length
+}
+impl Index {
+    fn new(path: PathBuf) -> Self {
+        // IF file exists, read and update state, else create new
+        // Steal new_test logic from below
+        Self {
+            path,
+            state: vec![],
+        }
+    }
+
+    fn state_to_file_string(&self) -> String {
+        todo!("Impl state to file str for Data")
+    }
+
+    fn save_to_file(&self) {
+        let str = self.state_to_file_string();
+        // write str to file
+        todo!("Impl save to file for Data")
+    }
+}
+
+// Utils
+/// Returns the parent directory of the current executable.
+/// ## Errors
+/// - `TapDataStoreErrorKind::ExecutablePathNotFound` - if unable to get current executable path
+/// - `TapDataStoreErrorKind::ExecutablePathParentDirectoryNotFound` - if unable to get parent directory
 fn get_parent_dir_of_tap() -> Result<PathBuf, TapDataStoreError> {
     let executable_path = std::env::current_exe().map_err(|e| TapDataStoreError {
         kind: TapDataStoreErrorKind::ExecutablePathNotFound,
@@ -357,11 +376,12 @@ fn get_parent_dir_of_tap() -> Result<PathBuf, TapDataStoreError> {
         .to_path_buf())
 }
 
-/// Checks if the parent and link names are valid and returns an error if they are not
-/// If they are valid, returns `Ok(())`
-fn validate_parent_and_link(parent: &str, link: &str) -> Result<(), TapDataStoreError> {
-    // Check rules for parent and link
-    let reserved_keywords = vec![
+/// Check if the parent name is valid
+/// ## Errors
+/// - `TapDataStoreErrorKind::ReservedKeyword` - if parent uses a reserved keyword
+fn validate_parent(parent: &str) -> Result<(), TapDataStoreError> {
+    // Check rules for parent
+    if vec![
         "-a",
         "--add",
         "-d",
@@ -381,16 +401,24 @@ fn validate_parent_and_link(parent: &str, link: &str) -> Result<(), TapDataStore
         "--parent-entity",
         "here",
         "|",
-    ];
-    if reserved_keywords.contains(&parent) {
+    ]
+    .contains(&parent)
+    {
         return Err(TapDataStoreError {
             kind: TapDataStoreErrorKind::ReservedKeyword,
             message: format!("Parent entity name {} is reserved", parent),
         });
     }
+    Ok(())
+}
+
+/// Check if the link name is valid
+/// ## Errors
+/// - `TapDataStoreErrorKind::ReservedKeyword` - if link name uses a reserved keyword
+fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
     if link.contains("|") {
         return Err(TapDataStoreError {
-            kind: TapDataStoreErrorKind::VerticalBarInLinkName,
+            kind: TapDataStoreErrorKind::ReservedKeyword,
             message: format!(
                 "Link name {} contains a vertical bar '|' which is reserved",
                 link
@@ -400,25 +428,131 @@ fn validate_parent_and_link(parent: &str, link: &str) -> Result<(), TapDataStore
     Ok(())
 }
 
+#[cfg(test)]
+/// Returns a test file path for either an index or data file. A test file name is of the format:
+/// - Index files: .tap_index_{test_name}_{timestamp}
+/// - Data files: .tap_data_{test_name}_{timestamp_millis}
+/// ## Errors
+/// - `TapDataStoreErrorKind::CurrentTimeError` - if unable to get current system time
+/// - Will panic if unable to get thread name
+fn get_test_file_path(file_type: FileType) -> Result<PathBuf, TapDataStoreError> {
+    let mut path_buf = get_parent_dir_of_tap()?;
+    // NOTE: Workaround where tests running at same time instant were using same file
+    // Instead, this will create a unique file for each test using test name
+    let thread = std::thread::current();
+    let test_name = thread.name().expect("Could not get thread name");
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::CurrentTimeError,
+            message: e.to_string(),
+        })?
+        .as_millis();
+
+    path_buf = match file_type {
+        FileType::Data => path_buf.join(format!(".tap_data_{}_{}", test_name, timestamp)),
+        FileType::Index => path_buf.join(format!(".tap_index_{}_{:?}", test_name, timestamp)),
+    };
+    Ok(path_buf)
+}
+
+#[cfg(test)]
+mod util_tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_parent_success() {
+        assert!(validate_parent("test").is_ok());
+        assert!(validate_parent("search-engines").is_ok());
+        assert!(validate_parent("valid-parent-name").is_ok());
+        assert!(validate_parent("here-is-where-we-see-if-the-parent-is-valid").is_ok());
+        assert!(validate_parent("well-what-do-we-have-here").is_ok());
+        assert!(validate_parent("Sure, spaces also are valid!").is_ok());
+        assert!(validate_parent("parent-entity").is_ok());
+    }
+
+    #[test]
+    fn test_validate_parent_failure() {
+        assert!(validate_parent("-a").is_err());
+        assert!(validate_parent("--add").is_err());
+        assert!(validate_parent("-d").is_err());
+        assert!(validate_parent("--delete").is_err());
+        assert!(validate_parent("--export").is_err());
+        assert!(validate_parent("--help").is_err());
+        assert!(validate_parent("-i").is_err());
+        assert!(validate_parent("--init").is_err());
+        assert!(validate_parent("--import").is_err());
+        assert!(validate_parent("-s").is_err());
+        assert!(validate_parent("--show").is_err());
+        assert!(validate_parent("-u").is_err());
+        assert!(validate_parent("--update").is_err());
+        assert!(validate_parent("--upsert").is_err());
+        assert!(validate_parent("-v").is_err());
+        assert!(validate_parent("--version").is_err());
+        assert!(validate_parent("--parent-entity").is_err());
+        assert_eq!(
+            validate_parent("here").unwrap_err().kind,
+            TapDataStoreErrorKind::ReservedKeyword
+        );
+    }
+
+    #[test]
+    fn test_validate_link_success() {
+        assert!(validate_link("test").is_ok());
+        assert!(validate_link("search-engines").is_ok());
+        assert!(validate_link("valid-link-name").is_ok());
+        assert!(validate_link("here-is-where-we-see-if-the-link-is-valid").is_ok());
+        assert!(validate_link("well-what-do-we-have-here").is_ok());
+        assert!(validate_link("Sure, spaces also are valid!").is_ok());
+    }
+
+    #[test]
+    fn test_validate_link_failure() {
+        assert!(validate_link("|").is_err());
+        assert!(validate_link("search|engines").is_err());
+        assert_eq!(
+            validate_link("search|engines").unwrap_err().kind,
+            TapDataStoreErrorKind::ReservedKeyword
+        );
+    }
+}
+
+// What if datastore and indexstore are structs instead stored in a DataStore struct
+// Then add methods to datastore and index store for internal workings
+// The public Datastore only exposes 6 methods: new, new_test(test), cleanup, add_link, upsert_link, delete_link, read(parent, optional_link)
+
+// TODO: add tests
+
+// test parse index empty
+// test parse index valid 1 parent,offset,length
+// test parse index valid 2 parents,offsets,lengths
+// test parse index invalid parent, no offsets, lengths (proper parse error)
+// test parse index invalid parent, offsets, no lengths (proper parse error)
+// test parse index invalid parent, offsets, no lengths (proper parse error)
+// test parse index invalid random file with strings (proper parse error)
+
+// test new Index (provided path, no previous exist)
+// test new Index (provided path, previous exist)
+// test new Index (no path, should create .tap_index)
+
+// test add_link
+// test upsert_link
+// test delete_link
+// test read
+
+// Errors
 #[derive(Debug, PartialEq)]
 pub enum TapDataStoreErrorKind {
     CurrentTimeError,
     ExecutablePathNotFound,
     ExecutablePathParentDirectoryNotFound,
-    DataFileCreationFailed,
-    DataFileDeletionFailed,
-    DataFileImproperFormat,
+    FileCreateFailed,
+    FileDeleteFailed,
     FileReadFailed,
-    FilePathNotFound,
     FileWriteFailed,
-    FileOpenFailed,
-    IndexFileCreationFailed,
-    IndexFileDeletionFailed,
-    IndexFileParseFailed,
-    IndexFileWriteFailed,
     LinkAlreadyExists,
+    ParseError,
     ReservedKeyword,
-    VerticalBarInLinkName,
 }
 
 #[derive(Debug)]
@@ -443,258 +577,13 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::ExecutablePathParentDirectoryNotFound => {
                 write!(f, "Executable path parent directory not found")
             }
-            TapDataStoreErrorKind::DataFileCreationFailed => {
-                write!(f, "Data file creation failed")
-            }
-            TapDataStoreErrorKind::DataFileDeletionFailed => {
-                write!(f, "Data file deletion failed")
-            }
-            TapDataStoreErrorKind::DataFileImproperFormat => {
-                write!(f, "Data file has an improper format")
-            }
+            TapDataStoreErrorKind::FileCreateFailed => write!(f, "File create failed"),
+            TapDataStoreErrorKind::FileDeleteFailed => write!(f, "File delete failed"),
             TapDataStoreErrorKind::FileReadFailed => write!(f, "File read failed"),
-            TapDataStoreErrorKind::FilePathNotFound => write!(f, "File path not found"),
-            TapDataStoreErrorKind::FileOpenFailed => write!(f, "File open failed"),
             TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
-            TapDataStoreErrorKind::IndexFileCreationFailed => {
-                write!(f, "Index file creation failed")
-            }
-            TapDataStoreErrorKind::IndexFileDeletionFailed => {
-                write!(f, "Index file deletion failed")
-            }
-            TapDataStoreErrorKind::IndexFileParseFailed => {
-                write!(f, "Index file parse failed")
-            }
-            TapDataStoreErrorKind::IndexFileWriteFailed => {
-                write!(f, "Index file write failed")
-            }
-            TapDataStoreErrorKind::LinkAlreadyExists => {
-                write!(f, "Link already exists")
-            }
+            TapDataStoreErrorKind::LinkAlreadyExists => write!(f, "Link already exists"),
+            TapDataStoreErrorKind::ParseError => write!(f, "Parse error"),
             TapDataStoreErrorKind::ReservedKeyword => write!(f, "Reserved keyword used"),
-            TapDataStoreErrorKind::VerticalBarInLinkName => {
-                write!(f, "Vertical bar '|' used in link name")
-            }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_data_store_init_create() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        let data_path = ds
-            .data_store()
-            .as_ref()
-            .expect("Could not get data store path");
-        let index_path = ds
-            .index_store()
-            .as_ref()
-            .expect("Could not get index store path");
-        assert!(&data_path.exists());
-        assert!(&index_path.exists());
-        assert!(&data_path.to_str().unwrap().contains(".tap_data"));
-        assert!(&index_path.to_str().unwrap().contains(".tap_index"));
-
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_data_store_cleanup() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        println!("Data store path: {:?}", ds.data_store().clone().unwrap());
-        println!("Index store path: {:?}", ds.index_store().clone().unwrap());
-        let data_path = ds
-            .data_store()
-            .clone()
-            .expect("Could not get data store path");
-        let index_path = ds
-            .index_store()
-            .clone()
-            .expect("Could not get index store path");
-        println!("Data store path: {:?}", data_path.clone());
-        println!("Index store path: {:?}", index_path.clone());
-        assert!(&data_path.exists());
-        assert!(&index_path.exists());
-
-        ds.cleanup().expect("Could not clean up data store");
-        assert!(!&data_path.exists());
-        assert!(!&index_path.exists());
-        assert!(ds.data_store().is_none());
-        assert!(ds.index_store().is_none());
-    }
-
-    #[test]
-    fn test_validate_parent_valid() {
-        let parent = "valid-parent-name";
-        let link = "valid-link-name";
-        assert!(validate_parent_and_link(parent, link).is_ok());
-    }
-
-    #[test]
-    fn test_validate_parent_invalid() {
-        let parent = "--version";
-        let link = "valid-link-name";
-        let res = validate_parent_and_link(parent, link);
-        assert!(res.is_err());
-        assert_eq!(
-            res.unwrap_err().kind,
-            TapDataStoreErrorKind::ReservedKeyword
-        );
-    }
-
-    #[test]
-    fn test_validate_link_invalid() {
-        let parent = "valid-parent-name";
-        let link = "|invalid-link-name";
-        let res = validate_parent_and_link(parent, link);
-        assert!(res.is_err());
-        assert_eq!(
-            res.unwrap_err().kind,
-            TapDataStoreErrorKind::VerticalBarInLinkName
-        );
-    }
-
-    #[test]
-    fn test_validate_link_valid() {
-        let parent = "valid-parent-name";
-        let link = "valid-link-name";
-        assert!(validate_parent_and_link(parent, link).is_ok());
-    }
-
-    #[test]
-    fn test_find_index_not_found() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        let res = ds.find_index("parent-not-in-index-store");
-        assert!(res.is_ok());
-        assert!(res.unwrap().is_none());
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_find_index_found() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        // Add parent to index
-        fs::write(
-            ds.index_store().as_ref().unwrap(),
-            "parent-in-index-store|0|20",
-        )
-        .unwrap();
-
-        let res = ds.find_index("parent-in-index-store");
-        assert!(res.is_ok());
-        let expected = Some(("parent-in-index-store".to_string(), 0, 20));
-        assert_eq!(res.unwrap(), expected);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_find_index_middle() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        // Add parent to index
-        fs::write(
-            ds.index_store().as_ref().unwrap(),
-            "parent-1|0|20\nparent-2|20|40\nparent-3|40|60",
-        )
-        .unwrap();
-
-        let res = ds.find_index("parent-2");
-        println!("res: {res:?}");
-        assert!(res.is_ok());
-        let expected = Some(("parent-2".to_string(), 20, 40));
-        assert_eq!(res.unwrap(), expected);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_find_index_end() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        // Add parent to index
-        fs::write(
-            ds.index_store().as_ref().unwrap(),
-            "parent-1|0|20\nparent-2|20|40\nparent-3|40|60",
-        )
-        .unwrap();
-
-        let res = ds.find_index("parent-3");
-        assert!(res.is_ok());
-        let expected = Some(("parent-3".to_string(), 40, 60));
-        assert_eq!(res.unwrap(), expected);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_upsert_index_no_previous_index() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        let res = ds.upsert_index("parent", 0, 20);
-        assert!(res.is_ok());
-
-        let res_2 = ds.find_index("parent").expect("Could not find index");
-        let expected = Some(("parent".to_string(), 0, 20));
-        assert_eq!(res_2, expected);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_upsert_index_with_previous_index() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        // Add parent to index
-        fs::write(ds.index_store().as_ref().unwrap(), "parent|0|20\n").unwrap();
-        let _ = ds
-            .upsert_index("parent", 0, 50)
-            .expect("Could not update index");
-
-        // TODO: determine why find_index does not work
-        let res_2 = ds.find_index("parent").expect("Could not find index");
-        let expected = Some(("parent".to_string(), 0, 50));
-        assert_eq!(res_2, expected);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_get_links_of_parent_with_valid_buffer() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        let res = ds.get_links_of_parent("some-parent", Some("some-parent->\n  link1|value1\n  link2|value2\nother-parent->\n  link3|value3\n")).expect("Could not get links of parent");
-        assert_eq!(res, vec!["link1".to_string(), "link2".to_string()]);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_get_links_of_parent_with_valid_data_file() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        ds.add_link("another-parent", "my-link", "my-value")
-            .expect("Could not add link");
-        let res = ds
-            .get_links_of_parent("another-parent", None)
-            .expect("Could not get links of parent");
-        assert_eq!(res, vec!["my-link".to_string()]);
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_get_links_of_parent_empty_vec_when_no_parent() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        let res = ds
-            .get_links_of_parent("some-parent", None)
-            .expect("Could not get links of parent");
-        assert!(res.is_empty());
-        ds.cleanup().expect("Could not clean up data store");
-    }
-
-    #[test]
-    fn test_get_links_of_parent_with_invalid_buffer() {
-        let mut ds = DataStore::new_test().expect("Could not create data store");
-        let res = ds.get_links_of_parent(
-            "some-parent",
-            Some("some-parent-\n  link1|value1\n  link2|value2\nother-parent->\n  link3|value3\n"),
-        );
-        assert_eq!(
-            res.unwrap_err().kind,
-            TapDataStoreErrorKind::DataFileImproperFormat
-        );
-        ds.cleanup().expect("Could not clean up data store");
     }
 }
