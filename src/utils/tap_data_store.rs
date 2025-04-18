@@ -77,10 +77,10 @@ impl Data {
         link: &str,
         value: &str,
     ) -> Result<(), TapDataStoreError> {
-        validate_parent(&parent)?;
-        validate_link(&link)?;
-        if let Some((_, links)) = self.state.iter_mut().find(|(p, _)| p == &parent) {
-            if links.iter().any(|(l, _)| l == &link) {
+        validate_parent(parent)?;
+        validate_link(link)?;
+        if let Some((_, links)) = self.state.iter_mut().find(|(p, _)| p == parent) {
+            if links.iter().any(|(l, _)| l == link) {
                 return Err(TapDataStoreError {
                     kind: TapDataStoreErrorKind::LinkAlreadyExists,
                     message: format!("Link {link} already exists for parent {parent}"),
@@ -306,6 +306,7 @@ impl Data {
         Ok(state)
     }
 
+    // TODO: make mut self like Index so you can sort state on add. This way the sort becomes faster over time
     fn state_to_file_string(&self) -> (String, Vec<IndexEntry>) {
         // Track offsets for fast reads using index file
         let mut offsets: Vec<IndexEntry> = vec![];
@@ -541,64 +542,139 @@ struct Index {
 // test parse index invalid parent, offsets, no lengths (proper parse error)
 // test parse index invalid random file with strings (proper parse error)
 
-// test new Index (provided path, no previous exist)
-// test new Index (provided path, previous exist)
-// test new Index (no path, should create .tap_index)
-
 // Publicly exposed
 impl Index {
-    // TODO: refactor to use same logic as Data::new & add tests like Data
     pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
-        if let Some(path) = path {
-            if path.exists() {
-                let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::FileReadFailed,
-                    message: format!("Could not read index file at {}: {e}", path.display()),
-                })?;
-                let state = Index::parse_file(&file_as_str)?;
-                Ok(Self { path, state })
-            } else {
-                File::create_new(&path).map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::FileCreateFailed,
-                    message: format!("Could not create index file: {e}"),
-                })?;
-                Ok(Self {
-                    path,
-                    state: vec![],
-                })
-            }
+        let (file_exists, path) = if let Some(path) = path {
+            (path.exists(), path)
         } else {
+            // Use standard path
             let executable_parent_dir = get_parent_dir_of_tap()?;
             let tap_data_path = executable_parent_dir.join(".tap_index");
-            File::create_new(&tap_data_path).map_err(|e| TapDataStoreError {
+            (tap_data_path.exists(), tap_data_path)
+        };
+
+        // Parse file if it exists
+        if file_exists {
+            let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileReadFailed,
+                message: format!("Could not read index file at {}: {e}", path.display()),
+            })?;
+            let state = Index::parse_file(&file_as_str)?;
+            Ok(Self { path, state })
+        } else {
+            File::create_new(&path).map_err(|e| TapDataStoreError {
                 kind: TapDataStoreErrorKind::FileCreateFailed,
                 message: format!("Could not create index file: {e}"),
             })?;
             Ok(Self {
-                path: tap_data_path,
+                path,
                 state: vec![],
             })
         }
     }
 
-    // TODO: add basic tests
     pub fn update(&mut self, offsets: Vec<IndexEntry>) {
         self.state = offsets
     }
 }
 
-// Privately exposed
-impl Index {
-    fn parse_file(file_as_str: &str) -> Result<Vec<IndexEntry>, TapDataStoreError> {
-        todo!("Impl parse file for Index")
+#[cfg(test)]
+mod index_public {
+    use super::{FileType, Index, get_test_file_path};
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_new_no_path_correct_file_name() {
+        let expected_file_name = ".tap_index";
+        let mut index = Index::new(None).unwrap();
+        assert!(index.path.to_str().unwrap().ends_with(expected_file_name));
+        index.cleanup().expect("Could not clean up index store");
     }
 
-    fn state_to_file_string(&self) -> String {
-        todo!("Impl state to file string for Index")
+    #[test]
+    fn test_new_with_path_correct_file_name() {
+        let expected_file_name =
+            get_test_file_path(FileType::Index).expect("Could not get test file path");
+        let mut index = Index::new(Some(PathBuf::from(&expected_file_name))).unwrap();
+        assert_eq!(index.path, expected_file_name);
+        index.cleanup().expect("Could not clean index data store");
+    }
+
+    #[test]
+    fn test_set_state_correct() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        fs::write(&index_path, "parent1|0\nparent2|14\n").unwrap();
+        let mut index = Index::new(Some(index_path)).unwrap();
+        assert_eq!(
+            index.state,
+            vec![("parent1".to_string(), 0), ("parent2".to_string(), 14),]
+        );
+        index.cleanup().expect("Could not clean up index store");
+    }
+
+    #[test]
+    fn test_update_state() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        let mut index = Index::new(Some(index_path)).unwrap();
+        index.update(vec![
+            ("parent1".to_string(), 0),
+            ("parent2".to_string(), 14),
+        ]);
+        assert_eq!(
+            index.state,
+            vec![("parent1".to_string(), 0), ("parent2".to_string(), 14)]
+        );
+        index.cleanup().expect("Could not clean up index store");
+    }
+}
+
+// Privately exposed
+impl Index {
+    // TODO: add tests
+    fn parse_file(file_as_str: &str) -> Result<Vec<IndexEntry>, TapDataStoreError> {
+        let mut state = vec![];
+        for line in file_as_str.lines() {
+            if line.contains('|') {
+                let (parent, offset) = line.split_once('|').ok_or(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::ParseError,
+                    message: format!(
+                        "A parent, offset line of an index file is expected to contain '|' character separating parent and offset. Line '{line}' does not match expected format of parent|offset\n"
+                    ),
+                })?;
+                let offset_parsed: usize = offset.parse().map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::ParseError,
+                    message: format!(
+                        "Line '{line}' of index file does not have a valid offset: {e}\n"
+                    ),
+                })?;
+                state.push((parent.to_string(), offset_parsed));
+            } else {
+                return Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::ParseError,
+                    message: format!(
+                        "Unknown format for index file. Line '{line}' does not match expected format of parent|offset\n"
+                    ),
+                });
+            }
+        }
+        Ok(state)
     }
 
     // TODO: add tests
-    fn save_to_file(&self) -> Result<(), TapDataStoreError> {
+    fn state_to_file_string(&mut self) -> String {
+        // Sort by parent
+        self.state.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
+        let mut res = String::new();
+        for (parent, offset) in &self.state {
+            res.push_str(&format!("{}|{}\n", parent.trim(), offset));
+        }
+        res
+    }
+
+    // TODO: add tests
+    fn save_to_file(&mut self) -> Result<(), TapDataStoreError> {
         let str = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileWriteFailed,
