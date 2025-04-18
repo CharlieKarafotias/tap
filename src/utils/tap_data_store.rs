@@ -209,13 +209,34 @@ impl Data {
     }
 
     fn state_to_file_string(&self) -> String {
-        todo!("Impl state to file str for Data")
+        // Sort state based on parent, then by link
+        let mut sorted_state: Vec<(String, Vec<(String, String)>)> = self
+            .state
+            .iter()
+            .map(|(parent, links)| {
+                let mut sorted_links = links.clone();
+                sorted_links.sort_by(|a, b| a.0.cmp(&b.0));
+                (parent.clone(), sorted_links)
+            })
+            .collect();
+        sorted_state.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut res = String::new();
+        for (parent, links) in sorted_state {
+            res.push_str(&format!("{}->\n", parent));
+            for (link, value) in links {
+                res.push_str(&format!("  {}|{}\n", link, value));
+            }
+        }
+        res
     }
 
-    fn save_to_file(&self) {
+    fn save_to_file(&self) -> Result<(), TapDataStoreError> {
         let str = self.state_to_file_string();
-        // write str to file
-        todo!("Impl save to file for Data")
+        fs::write(&self.path, str).map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::FileWriteFailed,
+            message: format!("Could not write data file: {}", e),
+        })
     }
 }
 
@@ -317,6 +338,67 @@ mod data_private {
         let res = Data::parse_file(fs::read_to_string(&data_path).unwrap().as_str());
         assert_eq!(res.unwrap_err().kind, TapDataStoreErrorKind::ParseError);
         cleanup_test_file(&data_path);
+    }
+
+    #[test]
+    fn test_state_to_file_string_empty() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        assert_eq!(data.state_to_file_string(), "");
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_state_to_file_string_spacing() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "parent1".to_string(),
+            vec![("link1".to_string(), "value1".to_string())],
+        )];
+        assert_eq!(data.state_to_file_string(), "parent1->\n  link1|value1\n");
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_state_to_file_string_sorted() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![
+            (
+                "parent1".to_string(),
+                vec![("link1".to_string(), "value1".to_string())],
+            ),
+            (
+                "apple".to_string(),
+                vec![
+                    ("homepage".to_string(), "www.apple.com".to_string()),
+                    (
+                        "dev".to_string(),
+                        "https://developer.apple.com/".to_string(),
+                    ),
+                ],
+            ),
+        ];
+        assert_eq!(
+            data.state_to_file_string(),
+            "apple->\n  dev|https://developer.apple.com/\n  homepage|www.apple.com\nparent1->\n  link1|value1\n"
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_save_to_file() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "parent1".to_string(),
+            vec![("link1".to_string(), "value1".to_string())],
+        )];
+        data.save_to_file().expect("Could not save to file");
+        let res = fs::read_to_string(&data.path).unwrap();
+        assert_eq!(res, "parent1->\n  link1|value1\n");
+        data.cleanup().expect("Could not clean up data store");
     }
 }
 
