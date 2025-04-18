@@ -53,10 +53,13 @@ impl Command for Add {
                     "TODO: Implement add functionality for here with Link Name {link_name} and Value {value}"
                 ))),
                 (parent_entity, link_name, value) => {
-                    // TODO: uncomment this
-                    // let ds = DataStore::new().map_err(|e| e.to_string())?;
-                    // ds.add_link(parent_entity, link_name, value)
-                    //     .map_err(|e| e.to_string())?;
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    ds.add_link(
+                        parent_entity.to_string(),
+                        link_name.to_string(),
+                        value.to_string(),
+                    )
+                    .map_err(|e| e.to_string())?;
                     Ok(CommandResult::Value(format!(
                         "Successfully added {link_name} with value {value} to parent entity {parent_entity}"
                     )))

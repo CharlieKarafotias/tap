@@ -1,5 +1,8 @@
 use std::{fmt, fs, fs::File, path::PathBuf};
 
+type LinkValue = (String, String);
+type IndexEntry = (String, usize);
+
 enum FileType {
     Data,
     Index,
@@ -16,43 +19,53 @@ impl DataStore {
         let index = Index::new(path)?;
         Ok(Self { data, index })
     }
+
+    pub fn add_link(
+        &mut self,
+        parent: String,
+        link: String,
+        value: String,
+    ) -> Result<(), TapDataStoreError> {
+        self.data.add_link(&parent, &link, &value)?;
+        let index_offsets = self.data.save_to_file()?;
+        self.index.update(index_offsets);
+        self.index.save_to_file()?;
+        Ok(())
+    }
 }
 
 struct Data {
     path: PathBuf,
-    state: Vec<(String, Vec<(String, String)>)>, // parent, (link, value)
+    state: Vec<(String, Vec<LinkValue>)>,
 }
 
 // Publicly exposed
 impl Data {
     pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
-        if let Some(path) = path {
-            if path.exists() {
-                let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::FileReadFailed,
-                    message: format!("Could not read data file at {}: {e}", path.display()),
-                })?;
-                let state = Data::parse_file(&file_as_str)?;
-                Ok(Self { path, state })
-            } else {
-                File::create_new(&path).map_err(|e| TapDataStoreError {
-                    kind: TapDataStoreErrorKind::FileCreateFailed,
-                    message: format!("Could not create data file: {e}"),
-                })?;
-                Ok(Self {
-                    path,
-                    state: vec![],
-                })
-            }
+        let (file_exists, path) = if let Some(path) = path {
+            (path.exists(), path)
         } else {
+            // Use standard path
             let executable_parent_dir = get_parent_dir_of_tap()?;
             let tap_data_path = executable_parent_dir.join(".tap_data");
-            File::create_new(&tap_data_path).map_err(|e| TapDataStoreError {
+            (tap_data_path.exists(), tap_data_path)
+        };
+
+        // Parse file if it exists
+        if file_exists {
+            let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileReadFailed,
+                message: format!("Could not read data file at {}: {e}", path.display()),
+            })?;
+            let state = Data::parse_file(&file_as_str)?;
+            Ok(Self { path, state })
+        } else {
+            File::create_new(&path).map_err(|e| TapDataStoreError {
                 kind: TapDataStoreErrorKind::FileCreateFailed,
                 message: format!("Could not create data file: {e}"),
             })?;
             Ok(Self {
-                path: tap_data_path,
+                path,
                 state: vec![],
             })
         }
@@ -60,9 +73,9 @@ impl Data {
 
     pub fn add_link(
         &mut self,
-        parent: String,
-        link: String,
-        value: String,
+        parent: &str,
+        link: &str,
+        value: &str,
     ) -> Result<(), TapDataStoreError> {
         validate_parent(&parent)?;
         validate_link(&link)?;
@@ -76,7 +89,7 @@ impl Data {
             links.push((link.trim().to_string(), value.trim().to_string()));
         } else {
             self.state.push((
-                parent,
+                parent.to_string(),
                 vec![(link.trim().to_string(), value.trim().to_string())],
             ));
         }
@@ -159,11 +172,7 @@ mod data_public {
     fn test_add_link_when_parent_doesnt_exist() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
         let mut data = Data::new(Some(data_path)).unwrap();
-        let res = data.add_link(
-            "parent1".to_string(),
-            "link1".to_string(),
-            "value1".to_string(),
-        );
+        let res = data.add_link("parent1", "link1", "value1");
         assert!(res.is_ok());
         assert_eq!(
             data.state,
@@ -186,11 +195,7 @@ mod data_public {
                 ("yahoo".to_string(), "www.yahoo.com".to_string()),
             ],
         )];
-        let res = data.add_link(
-            "search-engines".to_string(),
-            "link1".to_string(),
-            "value1".to_string(),
-        );
+        let res = data.add_link("search-engines", "link1", "value1");
         assert!(res.is_ok());
         assert_eq!(
             data.state,
@@ -214,11 +219,7 @@ mod data_public {
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
         )];
-        let res = data.add_link(
-            "search-engines".to_string(),
-            "google".to_string(),
-            "something else".to_string(),
-        );
+        let res = data.add_link("search-engines", "google", "something else");
         assert_eq!(
             res.unwrap_err().kind,
             TapDataStoreErrorKind::LinkAlreadyExists
@@ -236,13 +237,8 @@ mod data_public {
 
 // Private
 impl Data {
-    fn parse_file(
-        file_as_str: &str,
-    ) -> Result<Vec<(String, Vec<(String, String)>)>, TapDataStoreError> {
-        fn no_parent_error(
-            parent: &str,
-            links: &[(String, String)],
-        ) -> Result<(), TapDataStoreError> {
+    fn parse_file(file_as_str: &str) -> Result<Vec<(String, Vec<LinkValue>)>, TapDataStoreError> {
+        fn no_parent_error(parent: &str, links: &[LinkValue]) -> Result<(), TapDataStoreError> {
             if !links.is_empty() && parent.is_empty() {
                 return Err(TapDataStoreError {
                     kind: TapDataStoreErrorKind::ParseError,
@@ -310,9 +306,12 @@ impl Data {
         Ok(state)
     }
 
-    fn state_to_file_string(&self) -> String {
+    fn state_to_file_string(&self) -> (String, Vec<IndexEntry>) {
+        // Track offsets for fast reads using index file
+        let mut offsets: Vec<IndexEntry> = vec![];
+
         // Sort state based on parent, then by link
-        let mut sorted_state: Vec<(String, Vec<(String, String)>)> = self
+        let mut sorted_state: Vec<(String, Vec<LinkValue>)> = self
             .state
             .iter()
             .map(|(parent, links)| {
@@ -325,20 +324,23 @@ impl Data {
 
         let mut res = String::new();
         for (parent, links) in sorted_state {
+            offsets.push((parent.trim().to_string(), res.len()));
+
             res.push_str(&format!("{}->\n", parent.trim()));
             for (link, value) in links {
                 res.push_str(&format!("  {}|{}\n", link.trim(), value.trim()));
             }
         }
-        res
+        (res, offsets)
     }
 
-    fn save_to_file(&self) -> Result<(), TapDataStoreError> {
-        let str = self.state_to_file_string();
+    fn save_to_file(&self) -> Result<Vec<IndexEntry>, TapDataStoreError> {
+        let (str, offsets) = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileWriteFailed,
             message: format!("Could not write data file: {}", e),
-        })
+        })?;
+        Ok(offsets)
     }
 }
 
@@ -446,7 +448,9 @@ mod data_private {
     fn test_state_to_file_string_empty() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
         let mut data = Data::new(Some(data_path)).unwrap();
-        assert_eq!(data.state_to_file_string(), "");
+        let res = data.state_to_file_string();
+        assert_eq!(res.0, "");
+        assert_eq!(res.1, vec![]);
         data.cleanup().expect("Could not clean up data store");
     }
 
@@ -458,7 +462,9 @@ mod data_private {
             "parent1".to_string(),
             vec![("link1".to_string(), "value1".to_string())],
         )];
-        assert_eq!(data.state_to_file_string(), "parent1->\n  link1|value1\n");
+        let res = data.state_to_file_string();
+        assert_eq!(res.0, "parent1->\n  link1|value1\n");
+        assert_eq!(res.1, vec![("parent1".to_string(), 0)]);
         data.cleanup().expect("Could not clean up data store");
     }
 
@@ -482,9 +488,14 @@ mod data_private {
                 ],
             ),
         ];
+        let res = data.state_to_file_string();
         assert_eq!(
-            data.state_to_file_string(),
+            res.0,
             "apple->\n  dev|https://developer.apple.com/\n  homepage|www.apple.com\nparent1->\n  link1|value1\n"
+        );
+        assert_eq!(
+            res.1,
+            vec![("apple".to_string(), 0), ("parent1".to_string(), 68)]
         );
         data.cleanup().expect("Could not clean up data store");
     }
@@ -518,11 +529,25 @@ impl Data {
 
 struct Index {
     path: PathBuf,
-    state: Vec<(String, usize, usize)>, // parent, offset, length
+    state: Vec<IndexEntry>, // parent, offset
 }
+
+// TODO: index notes
+// test parse index empty
+// test parse index valid 1 parent,offset,length
+// test parse index valid 2 parents,offsets,lengths
+// test parse index invalid parent, no offsets, lengths (proper parse error)
+// test parse index invalid parent, offsets, no lengths (proper parse error)
+// test parse index invalid parent, offsets, no lengths (proper parse error)
+// test parse index invalid random file with strings (proper parse error)
+
+// test new Index (provided path, no previous exist)
+// test new Index (provided path, previous exist)
+// test new Index (no path, should create .tap_index)
 
 // Publicly exposed
 impl Index {
+    // TODO: refactor to use same logic as Data::new & add tests like Data
     pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
         if let Some(path) = path {
             if path.exists() {
@@ -556,36 +581,15 @@ impl Index {
         }
     }
 
-    pub fn add(
-        &mut self,
-        parent: String,
-        offset: usize,
-        length: usize,
-    ) -> Result<(), TapDataStoreError> {
-        todo!("Impl add index for Index")
-    }
-
-    pub fn remove(&mut self, parent: String) -> Result<(), TapDataStoreError> {
-        todo!("Impl remove index for Index")
-    }
-
-    pub fn get(&self, parent: &str) -> Result<Option<(String, usize, usize)>, TapDataStoreError> {
-        todo!("Impl find index for Index")
-    }
-
-    pub fn update(
-        &mut self,
-        parent: String,
-        offset: usize,
-        length: usize,
-    ) -> Result<(), TapDataStoreError> {
-        todo!("Impl update index for Index")
+    // TODO: add basic tests
+    pub fn update(&mut self, offsets: Vec<IndexEntry>) {
+        self.state = offsets
     }
 }
 
 // Privately exposed
 impl Index {
-    fn parse_file(file_as_str: &str) -> Result<Vec<(String, usize, usize)>, TapDataStoreError> {
+    fn parse_file(file_as_str: &str) -> Result<Vec<IndexEntry>, TapDataStoreError> {
         todo!("Impl parse file for Index")
     }
 
@@ -593,6 +597,7 @@ impl Index {
         todo!("Impl state to file string for Index")
     }
 
+    // TODO: add tests
     fn save_to_file(&self) -> Result<(), TapDataStoreError> {
         let str = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
@@ -772,29 +777,6 @@ mod util_tests {
         );
     }
 }
-
-// What if datastore and indexstore are structs instead stored in a DataStore struct
-// Then add methods to datastore and index store for internal workings
-// The public Datastore only exposes 6 methods: new, new_test(test), cleanup, add_link, upsert_link, delete_link, read(parent, optional_link)
-
-// TODO: add tests
-
-// test parse index empty
-// test parse index valid 1 parent,offset,length
-// test parse index valid 2 parents,offsets,lengths
-// test parse index invalid parent, no offsets, lengths (proper parse error)
-// test parse index invalid parent, offsets, no lengths (proper parse error)
-// test parse index invalid parent, offsets, no lengths (proper parse error)
-// test parse index invalid random file with strings (proper parse error)
-
-// test new Index (provided path, no previous exist)
-// test new Index (provided path, previous exist)
-// test new Index (no path, should create .tap_index)
-
-// test add_link
-// test upsert_link
-// test delete_link
-// test read
 
 // Errors
 #[derive(Debug, PartialEq)]
