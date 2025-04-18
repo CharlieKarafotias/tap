@@ -10,6 +10,14 @@ pub(crate) struct DataStore {
     index: Index,
 }
 
+impl DataStore {
+    pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
+        let data = Data::new(path.clone())?;
+        let index = Index::new(path)?;
+        Ok(Self { data, index })
+    }
+}
+
 struct Data {
     path: PathBuf,
     state: Vec<(String, Vec<(String, String)>)>, // parent, (link, value)
@@ -512,24 +520,96 @@ struct Index {
     path: PathBuf,
     state: Vec<(String, usize, usize)>, // parent, offset, length
 }
+
+// Publicly exposed
 impl Index {
-    fn new(path: PathBuf) -> Self {
-        // IF file exists, read and update state, else create new
-        // Steal new_test logic from below
-        Self {
-            path,
-            state: vec![],
+    pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
+        if let Some(path) = path {
+            if path.exists() {
+                let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileReadFailed,
+                    message: format!("Could not read index file at {}: {e}", path.display()),
+                })?;
+                let state = Index::parse_file(&file_as_str)?;
+                Ok(Self { path, state })
+            } else {
+                File::create_new(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileCreateFailed,
+                    message: format!("Could not create index file: {e}"),
+                })?;
+                Ok(Self {
+                    path,
+                    state: vec![],
+                })
+            }
+        } else {
+            let executable_parent_dir = get_parent_dir_of_tap()?;
+            let tap_data_path = executable_parent_dir.join(".tap_index");
+            File::create_new(&tap_data_path).map_err(|e| TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileCreateFailed,
+                message: format!("Could not create index file: {e}"),
+            })?;
+            Ok(Self {
+                path: tap_data_path,
+                state: vec![],
+            })
         }
     }
 
-    fn state_to_file_string(&self) -> String {
-        todo!("Impl state to file str for Data")
+    pub fn add(
+        &mut self,
+        parent: String,
+        offset: usize,
+        length: usize,
+    ) -> Result<(), TapDataStoreError> {
+        todo!("Impl add index for Index")
     }
 
-    fn save_to_file(&self) {
+    pub fn remove(&mut self, parent: String) -> Result<(), TapDataStoreError> {
+        todo!("Impl remove index for Index")
+    }
+
+    pub fn get(&self, parent: &str) -> Result<Option<(String, usize, usize)>, TapDataStoreError> {
+        todo!("Impl find index for Index")
+    }
+
+    pub fn update(
+        &mut self,
+        parent: String,
+        offset: usize,
+        length: usize,
+    ) -> Result<(), TapDataStoreError> {
+        todo!("Impl update index for Index")
+    }
+}
+
+// Privately exposed
+impl Index {
+    fn parse_file(file_as_str: &str) -> Result<Vec<(String, usize, usize)>, TapDataStoreError> {
+        todo!("Impl parse file for Index")
+    }
+
+    fn state_to_file_string(&self) -> String {
+        todo!("Impl state to file string for Index")
+    }
+
+    fn save_to_file(&self) -> Result<(), TapDataStoreError> {
         let str = self.state_to_file_string();
-        // write str to file
-        todo!("Impl save to file for Data")
+        fs::write(&self.path, str).map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::FileWriteFailed,
+            message: format!("Could not write index file: {}", e),
+        })
+    }
+}
+
+#[cfg(test)]
+impl Index {
+    fn cleanup(&mut self) -> Result<(), TapDataStoreError> {
+        fs::remove_file(&self.path).map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::FileDeleteFailed,
+            message: format!("Could not delete index file: {}", e),
+        })?;
+        Ok(())
     }
 }
 
