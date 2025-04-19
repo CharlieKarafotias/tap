@@ -12,7 +12,7 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 
 ## Phase 2: CRUD Operations for Entities and Links
 
-- [ ] Implement functionality to **add** new parent entities
+- [x] Implement functionality to **add** new parent entities
 - [ ] Implement functionality to **update** parent entities
 - [ ] Implement functionality to **delete** parent entities
 - [ ] Implement functionality to **list** parent entities
