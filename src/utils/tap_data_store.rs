@@ -306,36 +306,31 @@ impl Data {
         Ok(state)
     }
 
-    // TODO: make mut self like Index so you can sort state on add. This way the sort becomes faster over time
-    fn state_to_file_string(&self) -> (String, Vec<IndexEntry>) {
+    fn state_to_file_string(&mut self) -> (String, Vec<IndexEntry>) {
         // Track offsets for fast reads using index file
         let mut offsets: Vec<IndexEntry> = vec![];
+        // Build return string
+        let mut res = String::new();
 
         // Sort state based on parent, then by link
-        let mut sorted_state: Vec<(String, Vec<LinkValue>)> = self
-            .state
-            .iter()
-            .map(|(parent, links)| {
-                let mut sorted_links = links.clone();
-                sorted_links.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
-                (parent.clone(), sorted_links)
-            })
-            .collect();
-        sorted_state.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
+        self.state.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
+        self.state.iter_mut().for_each(|(_, links)| {
+            links.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
+        });
 
-        let mut res = String::new();
-        for (parent, links) in sorted_state {
+        // Build return string & track offsets
+        self.state.iter().for_each(|(parent, links)| {
             offsets.push((parent.trim().to_string(), res.len()));
 
             res.push_str(&format!("{}->\n", parent.trim()));
-            for (link, value) in links {
+            links.iter().for_each(|(link, value)| {
                 res.push_str(&format!("  {}|{}\n", link.trim(), value.trim()));
-            }
-        }
+            });
+        });
         (res, offsets)
     }
 
-    fn save_to_file(&self) -> Result<Vec<IndexEntry>, TapDataStoreError> {
+    fn save_to_file(&mut self) -> Result<Vec<IndexEntry>, TapDataStoreError> {
         let (str, offsets) = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileWriteFailed,
