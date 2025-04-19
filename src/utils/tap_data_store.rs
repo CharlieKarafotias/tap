@@ -3,11 +3,6 @@ use std::{fmt, fs, fs::File, path::PathBuf};
 type LinkValue = (String, String);
 type IndexEntry = (String, usize);
 
-enum FileType {
-    Data,
-    Index,
-}
-
 pub(crate) struct DataStore {
     data: Data,
     index: Index,
@@ -96,21 +91,27 @@ impl Data {
         Ok(())
     }
 
-    pub fn get(&self, parent: String, link: Option<String>) -> Result<String, TapDataStoreError> {
-        todo!("Impl get (links, link) for Data")
+    // TODO: GH-9
+    #[allow(dead_code)]
+    pub fn get(&self, _parent: String, _link: Option<String>) -> Result<String, TapDataStoreError> {
+        unimplemented!("Impl get (links, link) for Data")
     }
 
-    pub fn remove_link(&mut self, parent: String, link: String) -> Result<(), TapDataStoreError> {
-        todo!("Impl remove link for Data")
+    // TODO: GH-8
+    #[allow(dead_code)]
+    pub fn remove_link(&mut self, _parent: String, _link: String) -> Result<(), TapDataStoreError> {
+        unimplemented!("Impl remove link for Data")
     }
 
+    // TODO: GH-7
+    #[allow(dead_code)]
     pub fn upsert_link(
         &mut self,
-        parent: String,
-        link: String,
-        value: String,
+        _parent: String,
+        _link: String,
+        _value: String,
     ) -> Result<(), TapDataStoreError> {
-        todo!("Impl upsert link for Data")
+        unimplemented!("Impl upsert link for Data")
     }
 }
 
@@ -528,15 +529,6 @@ struct Index {
     state: Vec<IndexEntry>, // parent, offset
 }
 
-// TODO: index notes
-// test parse index empty
-// test parse index valid 1 parent,offset,length
-// test parse index valid 2 parents,offsets,lengths
-// test parse index invalid parent, no offsets, lengths (proper parse error)
-// test parse index invalid parent, offsets, no lengths (proper parse error)
-// test parse index invalid parent, offsets, no lengths (proper parse error)
-// test parse index invalid random file with strings (proper parse error)
-
 // Publicly exposed
 impl Index {
     pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
@@ -627,7 +619,6 @@ mod index_public {
 
 // Privately exposed
 impl Index {
-    // TODO: add tests
     fn parse_file(file_as_str: &str) -> Result<Vec<IndexEntry>, TapDataStoreError> {
         let mut state = vec![];
         for line in file_as_str.lines() {
@@ -657,7 +648,6 @@ impl Index {
         Ok(state)
     }
 
-    // TODO: add tests
     fn state_to_file_string(&mut self) -> String {
         // Sort by parent
         self.state.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
@@ -668,13 +658,128 @@ impl Index {
         res
     }
 
-    // TODO: add tests
     fn save_to_file(&mut self) -> Result<(), TapDataStoreError> {
         let str = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileWriteFailed,
             message: format!("Could not write index file: {}", e),
         })
+    }
+}
+
+#[cfg(test)]
+mod index_private {
+    use super::{FileType, Index, TapDataStoreErrorKind, get_test_file_path};
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn cleanup_test_file(file_path: &PathBuf) {
+        fs::remove_file(file_path).expect("Could not remove test file");
+    }
+
+    #[test]
+    fn test_parse_file_empty() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        fs::write(&index_path, "").unwrap();
+        let res = Index::parse_file(fs::read_to_string(&index_path).unwrap().as_str())
+            .expect("Could not parse file");
+        assert_eq!(res, vec![]);
+        cleanup_test_file(&index_path);
+    }
+    #[test]
+    fn test_parse_file_valid_one_index() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        fs::write(&index_path, "parent1|0\n").unwrap();
+        let res = Index::parse_file(fs::read_to_string(&index_path).unwrap().as_str())
+            .expect("Could not parse file");
+        assert_eq!(res, vec![("parent1".to_string(), 0)]);
+        cleanup_test_file(&index_path);
+    }
+
+    #[test]
+    fn test_parse_file_valid_two_indices() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        fs::write(&index_path, "search engines|0\ncoding|50\n").unwrap();
+        let res = Index::parse_file(fs::read_to_string(&index_path).unwrap().as_str())
+            .expect("Could not parse file");
+        assert_eq!(
+            res,
+            vec![
+                ("search engines".to_string(), 0),
+                ("coding".to_string(), 50)
+            ]
+        );
+        cleanup_test_file(&index_path);
+    }
+
+    #[test]
+    fn test_parse_file_invalid_offset() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        fs::write(
+            &index_path,
+            "valid|0\nsearch engines|not an offset\nanother valid|10\n",
+        )
+        .unwrap();
+        let res = Index::parse_file(fs::read_to_string(&index_path).unwrap().as_str());
+        assert_eq!(res.unwrap_err().kind, TapDataStoreErrorKind::ParseError);
+        cleanup_test_file(&index_path);
+    }
+
+    #[test]
+    fn test_parse_file_invalid_random_file() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        fs::write(
+            &index_path,
+            "Something that is completely not a index file was read",
+        )
+        .unwrap();
+        let res = Index::parse_file(fs::read_to_string(&index_path).unwrap().as_str());
+        assert_eq!(res.unwrap_err().kind, TapDataStoreErrorKind::ParseError);
+        cleanup_test_file(&index_path);
+    }
+
+    #[test]
+    fn test_state_to_file_string_empty() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        let mut data = Index::new(Some(index_path)).unwrap();
+        let res = data.state_to_file_string();
+        assert_eq!(res, "");
+        data.cleanup().expect("Could not clean up index store");
+    }
+
+    #[test]
+    fn test_state_to_file_string_valid() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        let mut index = Index::new(Some(index_path)).unwrap();
+        index.state = vec![("parent1".to_string(), 0)];
+        let res = index.state_to_file_string();
+        assert_eq!(res, "parent1|0\n");
+        index.cleanup().expect("Could not clean up index store");
+    }
+
+    #[test]
+    fn test_state_to_file_string_sorted() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        let mut index = Index::new(Some(index_path)).unwrap();
+        index.state = vec![("parent1".to_string(), 0), ("apple".to_string(), 50)];
+        let res = index.state_to_file_string();
+        assert_eq!(res, "apple|50\nparent1|0\n");
+        assert_eq!(
+            index.state,
+            vec![("apple".to_string(), 50), ("parent1".to_string(), 0)]
+        );
+        index.cleanup().expect("Could not clean up index store");
+    }
+
+    #[test]
+    fn test_save_to_file() {
+        let index_path = get_test_file_path(FileType::Index).expect("Could not get test file path");
+        let mut index = Index::new(Some(index_path)).unwrap();
+        index.state = vec![("parent1".to_string(), 0)];
+        index.save_to_file().expect("Could not save to file");
+        let res = fs::read_to_string(&index.path).unwrap();
+        assert_eq!(res, "parent1|0\n");
+        index.cleanup().expect("Could not clean up index store");
     }
 }
 
@@ -748,6 +853,7 @@ fn validate_parent(parent: &str) -> Result<(), TapDataStoreError> {
 /// ## Errors
 /// - `TapDataStoreErrorKind::ReservedKeyword` - if link name uses a reserved keyword
 fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
+    // TODO: link should be valid file URI or URL - make new task for this
     if link.contains("|") {
         return Err(TapDataStoreError {
             kind: TapDataStoreErrorKind::ReservedKeyword,
@@ -758,6 +864,12 @@ fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
         });
     }
     Ok(())
+}
+
+#[cfg(test)]
+enum FileType {
+    Data,
+    Index,
 }
 
 #[cfg(test)]
@@ -852,10 +964,12 @@ mod util_tests {
 // Errors
 #[derive(Debug, PartialEq)]
 pub enum TapDataStoreErrorKind {
+    #[cfg(test)]
     CurrentTimeError,
     ExecutablePathNotFound,
     ExecutablePathParentDirectoryNotFound,
     FileCreateFailed,
+    #[cfg(test)]
     FileDeleteFailed,
     FileReadFailed,
     FileWriteFailed,
@@ -879,6 +993,7 @@ impl fmt::Display for TapDataStoreError {
 impl fmt::Display for TapDataStoreErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            #[cfg(test)]
             TapDataStoreErrorKind::CurrentTimeError => write!(f, "Current time error"),
             TapDataStoreErrorKind::ExecutablePathNotFound => {
                 write!(f, "Executable path not found")
@@ -887,6 +1002,7 @@ impl fmt::Display for TapDataStoreErrorKind {
                 write!(f, "Executable path parent directory not found")
             }
             TapDataStoreErrorKind::FileCreateFailed => write!(f, "File create failed"),
+            #[cfg(test)]
             TapDataStoreErrorKind::FileDeleteFailed => write!(f, "File delete failed"),
             TapDataStoreErrorKind::FileReadFailed => write!(f, "File read failed"),
             TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
