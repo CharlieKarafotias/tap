@@ -1,6 +1,7 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
+    utils::command::get_current_directory_name,
     utils::tap_data_store::DataStore,
 };
 
@@ -51,12 +52,8 @@ impl Command for Add {
             3 => match (args[0].as_str(), args[1].as_str(), args[2].as_str()) {
                 ("here", link_name, value) => {
                     let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
-                    let current_dir_name = current_dir
-                        .file_name()
-                        .ok_or("Failed to get current directory name")?
-                        .to_str()
-                        .ok_or("Failed to get current directory name as string")?;
+                    let current_dir_name =
+                        get_current_directory_name().map_err(|e| e.to_string())?;
                     ds.add_link(
                         current_dir_name.to_string(),
                         link_name.to_string(),

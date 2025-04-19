@@ -134,6 +134,7 @@ mod data_public {
     use std::fs;
     use std::path::PathBuf;
 
+    // TODO: GH-45 Move the following to an integration test
     #[test]
     #[ignore = "Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
@@ -296,7 +297,7 @@ impl Data {
                 validate_parent(&temp_parent)?;
             } else if line.contains('|') {
                 // This is a link line
-                // TODO: in future, would be nice to support escaped pipes
+                // TODO: GH-46 in future, would be nice to support escaped pipes
                 let (link, value) = line
                     .split_once('|')
                     .ok_or(TapDataStoreError {
@@ -349,7 +350,7 @@ impl Data {
         let (str, offsets) = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileWriteFailed,
-            message: format!("Could not write data file: {}", e),
+            message: format!("Could not write data file: {e}"),
         })?;
         Ok(offsets)
     }
@@ -532,7 +533,7 @@ impl Data {
     fn cleanup(&mut self) -> Result<(), TapDataStoreError> {
         fs::remove_file(&self.path).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileDeleteFailed,
-            message: format!("Could not delete data file: {}", e),
+            message: format!("Could not delete data file: {e}"),
         })?;
         Ok(())
     }
@@ -599,6 +600,7 @@ mod index_public {
     use std::fs;
     use std::path::PathBuf;
 
+    // TODO: GH-45 Move the following to an integration test
     #[test]
     #[ignore = "Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
@@ -681,7 +683,7 @@ impl Index {
         self.state.sort_by(|a, b| a.0.trim().cmp(b.0.trim()));
         let mut res = String::new();
         for (parent, offset) in &self.state {
-            res.push_str(&format!("{}|{}\n", parent.trim(), offset));
+            res.push_str(&format!("{}|{offset}\n", parent.trim()));
         }
         res
     }
@@ -690,7 +692,7 @@ impl Index {
         let str = self.state_to_file_string();
         fs::write(&self.path, str).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileWriteFailed,
-            message: format!("Could not write index file: {}", e),
+            message: format!("Could not write index file: {e}"),
         })
     }
 }
@@ -816,7 +818,7 @@ impl Index {
     fn cleanup(&mut self) -> Result<(), TapDataStoreError> {
         fs::remove_file(&self.path).map_err(|e| TapDataStoreError {
             kind: TapDataStoreErrorKind::FileDeleteFailed,
-            message: format!("Could not delete index file: {}", e),
+            message: format!("Could not delete index file: {e}"),
         })?;
         Ok(())
     }
@@ -871,7 +873,7 @@ fn validate_parent(parent: &str) -> Result<(), TapDataStoreError> {
     {
         return Err(TapDataStoreError {
             kind: TapDataStoreErrorKind::ReservedKeyword,
-            message: format!("Parent entity name {} is reserved", parent),
+            message: format!("Parent entity name {parent} is reserved"),
         });
     }
     Ok(())
@@ -881,14 +883,11 @@ fn validate_parent(parent: &str) -> Result<(), TapDataStoreError> {
 /// ## Errors
 /// - `TapDataStoreErrorKind::ReservedKeyword` - if link name uses a reserved keyword
 fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
-    // TODO: link should be valid file URI or URL - make new task for this
+    // TODO: GH-47 Add new error for invalid file URI / URL
     if link.contains("|") {
         return Err(TapDataStoreError {
             kind: TapDataStoreErrorKind::ReservedKeyword,
-            message: format!(
-                "Link name {} contains a vertical bar '|' which is reserved",
-                link
-            ),
+            message: format!("Link name {link} contains a vertical bar '|' which is reserved"),
         });
     }
     Ok(())
@@ -922,8 +921,8 @@ fn get_test_file_path(file_type: FileType) -> Result<PathBuf, TapDataStoreError>
         .as_millis();
 
     path_buf = match file_type {
-        FileType::Data => path_buf.join(format!(".tap_data_{}_{}", test_name, timestamp)),
-        FileType::Index => path_buf.join(format!(".tap_index_{}_{:?}", test_name, timestamp)),
+        FileType::Data => path_buf.join(format!(".tap_data_{test_name}_{timestamp}")),
+        FileType::Index => path_buf.join(format!(".tap_index_{test_name}_{timestamp}")),
     };
     Ok(path_buf)
 }
