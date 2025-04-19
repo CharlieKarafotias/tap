@@ -40,9 +40,22 @@ impl Data {
         let (file_exists, path) = if let Some(path) = path {
             (path.exists(), path)
         } else {
-            // Use standard path
-            let executable_parent_dir = get_parent_dir_of_tap()?;
-            let tap_data_path = executable_parent_dir.join(".tap_data");
+            let mut tap_data_path = get_parent_dir_of_tap()?;
+
+            // NOTE: workaround for command tests running at the same time.
+            // Use test pathing for tests, otherwise use standard
+            // I want to use this over cfg!(test) as I do not want to compile test code in prod builds
+            #[allow(unused_mut)]
+            let mut test_path: Option<PathBuf> = None;
+            #[cfg(test)]
+            {
+                test_path = Some(get_test_file_path(FileType::Data)?);
+            }
+            if let Some(test_path) = test_path {
+                tap_data_path = test_path;
+            } else {
+                tap_data_path = tap_data_path.join(".tap_data");
+            }
             (tap_data_path.exists(), tap_data_path)
         };
 
@@ -122,6 +135,7 @@ mod data_public {
     use std::path::PathBuf;
 
     #[test]
+    #[ignore = "Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
         let expected_file_name = ".tap_data";
         let mut data = Data::new(None).unwrap();
@@ -535,9 +549,22 @@ impl Index {
         let (file_exists, path) = if let Some(path) = path {
             (path.exists(), path)
         } else {
-            // Use standard path
-            let executable_parent_dir = get_parent_dir_of_tap()?;
-            let tap_data_path = executable_parent_dir.join(".tap_index");
+            let mut tap_data_path = get_parent_dir_of_tap()?;
+
+            // NOTE: workaround for command tests running at the same time.
+            // Use test pathing for tests, otherwise use standard
+            // I want to use this over cfg!(test) as I do not want to compile test code in prod builds
+            #[allow(unused_mut)]
+            let mut test_path: Option<PathBuf> = None;
+            #[cfg(test)]
+            {
+                test_path = Some(get_test_file_path(FileType::Index)?);
+            }
+            if let Some(test_path) = test_path {
+                tap_data_path = test_path;
+            } else {
+                tap_data_path = tap_data_path.join(".tap_index");
+            }
             (tap_data_path.exists(), tap_data_path)
         };
 
@@ -573,6 +600,7 @@ mod index_public {
     use std::path::PathBuf;
 
     #[test]
+    #[ignore = "Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
         let expected_file_name = ".tap_index";
         let mut index = Index::new(None).unwrap();

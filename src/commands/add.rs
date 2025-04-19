@@ -49,9 +49,24 @@ impl Command for Add {
                 }
             }
             3 => match (args[0].as_str(), args[1].as_str(), args[2].as_str()) {
-                ("here", link_name, value) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement add functionality for here with Link Name {link_name} and Value {value}"
-                ))),
+                ("here", link_name, value) => {
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    let current_dir = std::env::current_dir().map_err(|e| e.to_string())?;
+                    let current_dir_name = current_dir
+                        .file_name()
+                        .ok_or("Failed to get current directory name")?
+                        .to_str()
+                        .ok_or("Failed to get current directory name as string")?;
+                    ds.add_link(
+                        current_dir_name.to_string(),
+                        link_name.to_string(),
+                        value.to_string(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value(format!(
+                        "Successfully added {link_name} with value {value} to parent entity {current_dir_name}"
+                    )))
+                }
                 (parent_entity, link_name, value) => {
                     let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
                     ds.add_link(
@@ -88,9 +103,6 @@ impl DisplayCommandAsRow for Add {
 mod tests {
     use super::*;
 
-    // TODO: Need an after each to clean up created_test datastore files.
-    // Maybe we can add a drop that only compiles in cfg(test) so we get this for free?
-
     #[test]
     fn test_add_run_expected_help_arg() {
         let args: Vec<String> = vec!["--help".to_string()];
@@ -116,10 +128,12 @@ mod tests {
             "google".to_string(),
             "https://google.com".to_string(),
         ];
+        let current_dir = std::env::current_dir().unwrap();
+        let current_dir_name = current_dir.file_name().unwrap().to_str().unwrap();
         let cmd = Add::default();
-        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
-            "TODO: Implement add functionality for here with Link Name google and Value https://google.com".to_string()
-        ));
+        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(format!(
+            "Successfully added google with value https://google.com to parent entity {current_dir_name}"
+        )));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
