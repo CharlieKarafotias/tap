@@ -27,6 +27,19 @@ impl DataStore {
         self.index.save_to_file()?;
         Ok(())
     }
+
+    pub fn upsert_link(
+        &mut self,
+        parent: String,
+        link: String,
+        value: String,
+    ) -> Result<(), TapDataStoreError> {
+        self.data.upsert_link(&parent, &link, &value)?;
+        let index_offsets = self.data.save_to_file()?;
+        self.index.update(index_offsets);
+        self.index.save_to_file()?;
+        Ok(())
+    }
 }
 
 struct Data {
@@ -116,15 +129,29 @@ impl Data {
         unimplemented!("Impl remove link for Data")
     }
 
-    // TODO: GH-7
-    #[allow(dead_code)]
     pub fn upsert_link(
         &mut self,
-        _parent: String,
-        _link: String,
-        _value: String,
+        parent: &str,
+        link: &str,
+        value: &str,
     ) -> Result<(), TapDataStoreError> {
-        unimplemented!("Impl upsert link for Data")
+        validate_parent(parent)?;
+        validate_link(link)?;
+        if let Some((_, links)) = self.state.iter_mut().find(|(p, _)| p == parent) {
+            // If link already exists, update, else add
+            if let Some((_, v)) = links.iter_mut().find(|(l, _)| l.trim() == link) {
+                *v = value.trim().to_string();
+            } else {
+                links.push((link.trim().to_string(), value.trim().to_string()));
+            }
+        } else {
+            // If parent does not exist, add parent and new link/value pair
+            self.state.push((
+                parent.to_string(),
+                vec![(link.trim().to_string(), value.trim().to_string())],
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -246,6 +273,82 @@ mod data_public {
                 "search-engines".to_string(),
                 vec![("google".to_string(), "www.google.com".to_string()),]
             )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_upsert_link_when_link_does_not_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.upsert_link("search-engines", "yahoo", "www.yahoo.com");
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![
+                    ("google".to_string(), "www.google.com".to_string()),
+                    ("yahoo".to_string(), "www.yahoo.com".to_string())
+                ]
+            )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_upsert_link_when_link_already_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.upsert_link("search-engines", "google", "something else");
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![("google".to_string(), "something else".to_string()),]
+            )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_upsert_link_when_no_parent() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.upsert_link(
+            "a-different-parent",
+            "google",
+            "the same link name should not matter for different parent",
+        );
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![
+                (
+                    "search-engines".to_string(),
+                    vec![("google".to_string(), "www.google.com".to_string()),]
+                ),
+                (
+                    "a-different-parent".to_string(),
+                    vec![(
+                        "google".to_string(),
+                        "the same link name should not matter for different parent".to_string()
+                    ),]
+                )
+            ]
         );
         data.cleanup().expect("Could not clean up data store");
     }
