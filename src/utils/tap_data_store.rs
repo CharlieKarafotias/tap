@@ -40,6 +40,25 @@ impl DataStore {
         Ok(())
     }
 
+    /// Returns the first link in the list. This does not utilize the index and is therefore slow.
+    /// To use the indexed version, create a new `ReadDataStore` struct and call `read_link` or `read_parent`.
+    #[allow(dead_code)]
+    pub fn read_link_slow(
+        &self,
+        parent: &str,
+        link: &str,
+    ) -> Result<Option<LinkValue>, TapDataStoreError> {
+        let links = self.data.get(parent, Some(link))?;
+        Ok(links.first().cloned())
+    }
+
+    /// Returns the first link in the list. This does not utilize the index and is therefore slow.
+    /// To use the indexed version, create a new `ReadDataStore` struct and call `read_link` or `read_parent`.
+    #[allow(dead_code)]
+    pub fn read_parent_slow(&self, parent: &str) -> Result<Vec<LinkValue>, TapDataStoreError> {
+        self.data.get(parent, None)
+    }
+
     pub fn upsert_link(
         &mut self,
         parent: String,
@@ -129,10 +148,35 @@ impl Data {
         Ok(())
     }
 
-    // TODO: GH-9
-    #[allow(dead_code)]
-    pub fn get(&self, _parent: String, _link: Option<String>) -> Result<String, TapDataStoreError> {
-        unimplemented!("Impl get (links, link) for Data")
+    pub fn get(
+        &self,
+        parent: &str,
+        link: Option<&str>,
+    ) -> Result<Vec<LinkValue>, TapDataStoreError> {
+        validate_parent(parent)?;
+        let links = self
+            .state
+            .iter()
+            .find(|(p, _)| p.trim() == parent)
+            .map(|(_, links)| links.clone())
+            .ok_or(TapDataStoreError {
+                kind: TapDataStoreErrorKind::ParentEntityNotFound,
+                message: format!("Parent '{parent}' not found"),
+            })?;
+        if let Some(link) = link {
+            validate_link(link)?;
+            let link = link.trim();
+            let found_link = links.iter().find(|(l, _)| l.trim() == link);
+            if let Some(found_link) = found_link {
+                return Ok(vec![found_link.clone()]);
+            } else {
+                return Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::LinkNotFound,
+                    message: format!("Link '{link}' not found in parent '{parent}'"),
+                });
+            }
+        }
+        Ok(links)
     }
 
     pub fn remove(&mut self, parent: &str, link: Option<&str>) -> Result<(), TapDataStoreError> {
@@ -311,6 +355,88 @@ mod data_public {
             vec![(
                 "search-engines".to_string(),
                 vec![("google".to_string(), "www.google.com".to_string()),]
+            )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_parent_when_parent_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![
+                ("google".to_string(), "www.google.com".to_string()),
+                ("yahoo".to_string(), "www.yahoo.com".to_string()),
+            ],
+        )];
+        let res = data.get("search-engines", None);
+        assert!(res.is_ok());
+        assert_eq!(
+            res.unwrap(),
+            vec![
+                ("google".to_string(), "www.google.com".to_string()),
+                ("yahoo".to_string(), "www.yahoo.com".to_string()),
+            ]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_parent_when_parent_does_not_exist() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        let res = data.get("search-engines", None);
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::ParentEntityNotFound
+        );
+        assert_eq!(data.state, vec![]);
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_parent_and_link_when_parent_exists_and_link_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![
+                ("google".to_string(), "www.google.com".to_string()),
+                ("yahoo".to_string(), "www.yahoo.com".to_string()),
+            ],
+        )];
+        let res = data.get("search-engines", Some("google"));
+        assert!(res.is_ok());
+        assert_eq!(
+            res.unwrap(),
+            vec![("google".to_string(), "www.google.com".to_string())]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_get_parent_and_link_when_parent_exists_and_link_does_not_exist() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![
+                ("google".to_string(), "www.google.com".to_string()),
+                ("yahoo".to_string(), "www.yahoo.com".to_string()),
+            ],
+        )];
+        let res = data.get("search-engines", Some("link1"));
+        assert_eq!(res.unwrap_err().kind, TapDataStoreErrorKind::LinkNotFound);
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![
+                    ("google".to_string(), "www.google.com".to_string()),
+                    ("yahoo".to_string(), "www.yahoo.com".to_string()),
+                ],
             )]
         );
         data.cleanup().expect("Could not clean up data store");
