@@ -28,6 +28,18 @@ impl DataStore {
         Ok(())
     }
 
+    pub fn delete(
+        &mut self,
+        parent: String,
+        link: Option<String>,
+    ) -> Result<(), TapDataStoreError> {
+        self.data.remove(&parent, link.as_deref())?;
+        let index_offsets = self.data.save_to_file()?;
+        self.index.update(index_offsets);
+        self.index.save_to_file()?;
+        Ok(())
+    }
+
     pub fn upsert_link(
         &mut self,
         parent: String,
@@ -123,10 +135,37 @@ impl Data {
         unimplemented!("Impl get (links, link) for Data")
     }
 
-    // TODO: GH-8
-    #[allow(dead_code)]
-    pub fn remove_link(&mut self, _parent: String, _link: String) -> Result<(), TapDataStoreError> {
-        unimplemented!("Impl remove link for Data")
+    pub fn remove(&mut self, parent: &str, link: Option<&str>) -> Result<(), TapDataStoreError> {
+        validate_parent(parent)?;
+        if let Some(link) = link {
+            validate_link(link)?;
+        }
+        if let Some(parent_idx) = self.state.iter().position(|(p, _)| p == parent) {
+            let (_, links) = &mut self.state[parent_idx];
+            // If there is a link to remove, find and remove. Otherwise, remove parent
+            if let Some(link) = link {
+                if let Some(index) = links.iter().position(|(l, _)| l.trim() == link) {
+                    links.remove(index);
+                    // If no links left, remove parent as well
+                    if links.is_empty() {
+                        self.state.remove(parent_idx);
+                    }
+                } else {
+                    return Err(TapDataStoreError {
+                        kind: TapDataStoreErrorKind::LinkNotFound,
+                        message: format!("Link '{link}' not found in parent '{parent}'"),
+                    });
+                }
+            } else {
+                self.state.remove(parent_idx);
+            }
+        } else {
+            return Err(TapDataStoreError {
+                kind: TapDataStoreErrorKind::ParentEntityNotFound,
+                message: format!("Parent '{parent}' not found"),
+            });
+        }
+        Ok(())
     }
 
     pub fn upsert_link(
@@ -163,7 +202,7 @@ mod data_public {
 
     // TODO: GH-45 Move the following to an integration test
     #[test]
-    #[ignore = "Should really be an integration test - move this out"]
+    #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
         let expected_file_name = ".tap_data";
         let mut data = Data::new(None).unwrap();
@@ -272,6 +311,93 @@ mod data_public {
             vec![(
                 "search-engines".to_string(),
                 vec![("google".to_string(), "www.google.com".to_string()),]
+            )]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_remove_parent_when_parent_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.remove("search-engines", None);
+        assert!(res.is_ok());
+        assert_eq!(data.state, vec![]);
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_remove_parent_when_parent_does_not_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        let res = data.remove("search-engines", None);
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::ParentEntityNotFound
+        );
+        assert_eq!(data.state, vec![]);
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_remove_parent_and_link_when_parent_exists_and_link_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.remove("search-engines", Some("google"));
+        assert!(res.is_ok());
+        assert_eq!(data.state, vec![]);
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_remove_link_when_parent_exists_and_link_exists() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![
+                ("google".to_string(), "www.google.com".to_string()),
+                ("yahoo".to_string(), "www.yahoo.com".to_string()),
+            ],
+        )];
+        let res = data.remove("search-engines", Some("google"));
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![("yahoo".to_string(), "www.yahoo.com".to_string())],
+            ),]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_remove_link_when_parent_does_not_exist_and_link_exists_in_other_parent() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path)).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        let res = data.remove("search-engines2", Some("google"));
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::ParentEntityNotFound
+        );
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![("google".to_string(), "www.google.com".to_string())],
             )]
         );
         data.cleanup().expect("Could not clean up data store");
@@ -705,7 +831,7 @@ mod index_public {
 
     // TODO: GH-45 Move the following to an integration test
     #[test]
-    #[ignore = "Should really be an integration test - move this out"]
+    #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
         let expected_file_name = ".tap_index";
         let mut index = Index::new(None).unwrap();
@@ -1104,6 +1230,8 @@ pub enum TapDataStoreErrorKind {
     FileReadFailed,
     FileWriteFailed,
     LinkAlreadyExists,
+    LinkNotFound,
+    ParentEntityNotFound,
     ParseError,
     ReservedKeyword,
 }
@@ -1137,6 +1265,8 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::FileReadFailed => write!(f, "File read failed"),
             TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
             TapDataStoreErrorKind::LinkAlreadyExists => write!(f, "Link already exists"),
+            TapDataStoreErrorKind::LinkNotFound => write!(f, "Link not found"),
+            TapDataStoreErrorKind::ParentEntityNotFound => write!(f, "Parent entity not found"),
             TapDataStoreErrorKind::ParseError => write!(f, "Parse error"),
             TapDataStoreErrorKind::ReservedKeyword => write!(f, "Reserved keyword used"),
         }
