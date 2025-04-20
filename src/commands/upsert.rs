@@ -1,6 +1,8 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
+    utils::command::get_current_directory_name,
+    utils::tap_data_store::DataStore,
 };
 
 pub(crate) struct Upsert {
@@ -48,12 +50,32 @@ impl Command for Upsert {
                 }
             }
             3 => match (args[0].as_str(), args[1].as_str(), args[2].as_str()) {
-                ("here", link_name, value) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement upsert functionality for here with Link Name {link_name} and Value {value}"
-                ))),
-                (parent_entity, link_name, value) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement upsert functionality for Parent Entity {parent_entity} with Link Name {link_name} and Value {value}"
-                ))),
+                ("here", link_name, value) => {
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    let current_dir_name =
+                        get_current_directory_name().map_err(|e| e.to_string())?;
+                    ds.upsert_link(
+                        current_dir_name.to_string(),
+                        link_name.to_string(),
+                        value.to_string(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value(format!(
+                        "Successfully upserted {link_name} with value {value} to parent entity {current_dir_name}"
+                    )))
+                }
+                (parent_entity, link_name, value) => {
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    ds.upsert_link(
+                        parent_entity.to_string(),
+                        link_name.to_string(),
+                        value.to_string(),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value(format!(
+                        "Successfully upserted {link_name} with value {value} to parent entity {parent_entity}"
+                    )))
+                }
             },
             _ => Err(self.error_message()),
         }
@@ -103,10 +125,12 @@ mod tests {
             "google".to_string(),
             "https://google.com".to_string(),
         ];
+        let current_dir = std::env::current_dir().unwrap();
+        let current_dir_name = current_dir.file_name().unwrap().to_str().unwrap();
         let cmd = Upsert::default();
-        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
-            "TODO: Implement upsert functionality for here with Link Name google and Value https://google.com".to_string()
-        ));
+        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(format!(
+            "Successfully upserted google with value https://google.com to parent entity {current_dir_name}"
+        )));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
@@ -119,9 +143,8 @@ mod tests {
             "https://google.com".to_string(),
         ];
         let cmd = Upsert::default();
-        let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
-            "TODO: Implement upsert functionality for Parent Entity search-engines with Link Name google and Value https://google.com".to_string()
-        ));
+        let expected: Result<CommandResult, String> =
+            Ok(CommandResult::Value("Successfully upserted google with value https://google.com to parent entity search-engines".to_string()));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
