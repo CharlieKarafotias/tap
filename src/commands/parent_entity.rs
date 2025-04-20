@@ -1,6 +1,7 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
+    utils::os_implementations::open_link,
     utils::tap_data_store::ReadDataStore,
 };
 
@@ -42,25 +43,24 @@ impl Command for ParentEntity {
                 let ds = ReadDataStore::new(None, parent_entity.to_string())
                     .map_err(|e| e.to_string())?;
                 let res = ds.read_parent(parent_entity).map_err(|e| e.to_string())?;
-                // TODO: impl open functionality
-                Ok(CommandResult::Value(format!(
-                    "TODO: Implement open functionality for Parent Entity: {:#?}",
-                    res
-                )))
+                let mut res_str = "Opening links: [".to_string();
+                for (link, val) in res.iter() {
+                    open_link(val).map_err(|e| e.to_string())?;
+                    res_str.push_str(format!("{link},").as_str());
+                }
+                res_str.push(']');
+                Ok(CommandResult::Value(res_str))
             }
             2 => match (args[0].as_str(), args[1].as_str()) {
                 ("--parent-entity", "--help") => Ok(CommandResult::Value(self.help_message())),
                 (parent_entity, link) => {
                     let ds = ReadDataStore::new(None, parent_entity.to_string())
                         .map_err(|e| e.to_string())?;
-                    let res = ds
+                    let (_, val) = ds
                         .read_link(parent_entity, link)
                         .map_err(|e| e.to_string())?;
-                    // TODO: impl open functionality
-                    Ok(CommandResult::Value(format!(
-                        "TODO: Implement open functionality for Parent Entity {parent_entity} with Link Name {link}: {:#?}",
-                        res
-                    )))
+                    open_link(&val).map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value("Opening link...".to_string()))
                 }
             },
             _ => Err(self.error_message()),
