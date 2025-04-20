@@ -1014,7 +1014,7 @@ impl Data {
     }
 }
 
-pub(super) struct Index {
+struct Index {
     path: PathBuf,
     state: Vec<IndexEntry>, // parent, offset
 }
