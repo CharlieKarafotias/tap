@@ -1,3 +1,6 @@
+use crate::utils::command::get_current_directory_name;
+use crate::utils::os_implementations::open_link;
+use crate::utils::tap_data_store::ReadDataStore;
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
@@ -36,14 +39,31 @@ impl Command for Here {
 
     fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
         match args.len() {
-            0 => Ok(CommandResult::Value(
-                "TODO: Implement here functionality".to_string(),
-            )),
+            0 => {
+                let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
+                let ds =
+                    ReadDataStore::new(None, parent_entity.clone()).map_err(|e| e.to_string())?;
+                let res = ds.read_parent(&parent_entity).map_err(|e| e.to_string())?;
+                let mut res_str = "Opening links: [".to_string();
+                for (link, val) in res.iter() {
+                    open_link(val).map_err(|e| e.to_string())?;
+                    res_str.push_str(format!("{link},").as_str());
+                }
+                res_str.push(']');
+                Ok(CommandResult::Value(res_str))
+            }
             1 => match args[0].as_str() {
                 "--help" => Ok(CommandResult::Value(self.help_message())),
-                link => Ok(CommandResult::Value(format!(
-                    "TODO: Implement open functionality for here with Link Name {link}"
-                ))),
+                link => {
+                    let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
+                    let ds = ReadDataStore::new(None, parent_entity.to_string())
+                        .map_err(|e| e.to_string())?;
+                    let (_, val) = ds
+                        .read_link(&parent_entity, link)
+                        .map_err(|e| e.to_string())?;
+                    open_link(&val).map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value("Opening link...".to_string()))
+                }
             },
             _ => Err(self.error_message()),
         }
@@ -87,6 +107,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_here_run_all_links() {
         let args: Vec<String> = vec![];
         let cmd = Here::default();
@@ -98,6 +119,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_here_run_specific_link() {
         let args: Vec<String> = vec!["google".to_string()];
         let cmd = Here::default();
