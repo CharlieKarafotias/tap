@@ -1,6 +1,7 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
+    utils::tap_data_store::ReadDataStore,
 };
 
 pub(crate) struct ParentEntity {
@@ -38,15 +39,29 @@ impl Command for ParentEntity {
         match args.len() {
             1 => {
                 let parent_entity = args[0].as_str();
+                let ds = ReadDataStore::new(None, parent_entity.to_string())
+                    .map_err(|e| e.to_string())?;
+                let res = ds.read_parent(parent_entity).map_err(|e| e.to_string())?;
+                // TODO: impl open functionality
                 Ok(CommandResult::Value(format!(
-                    "TODO: Implement open functionality for Parent Entity: {parent_entity}"
+                    "TODO: Implement open functionality for Parent Entity: {:#?}",
+                    res
                 )))
             }
             2 => match (args[0].as_str(), args[1].as_str()) {
                 ("--parent-entity", "--help") => Ok(CommandResult::Value(self.help_message())),
-                (parent_entity, link) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement open functionality for Parent Entity {parent_entity} with Link Name {link}"
-                ))),
+                (parent_entity, link) => {
+                    let ds = ReadDataStore::new(None, parent_entity.to_string())
+                        .map_err(|e| e.to_string())?;
+                    let res = ds
+                        .read_link(parent_entity, link)
+                        .map_err(|e| e.to_string())?;
+                    // TODO: impl open functionality
+                    Ok(CommandResult::Value(format!(
+                        "TODO: Implement open functionality for Parent Entity {parent_entity} with Link Name {link}: {:#?}",
+                        res
+                    )))
+                }
             },
             _ => Err(self.error_message()),
         }
@@ -94,6 +109,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_parent_entity_run_all_links() {
         let args: Vec<String> = vec!["search-engine".to_string()];
         let cmd = ParentEntity::default();
@@ -105,6 +121,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_parent_entity_run_specific_link() {
         let args: Vec<String> = vec!["search-engine".to_string(), "google".to_string()];
         let cmd = ParentEntity::default();

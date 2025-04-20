@@ -1,7 +1,41 @@
+use std::io::{Read, Seek, SeekFrom};
 use std::{fmt, fs, fs::File, path::PathBuf};
 
 type LinkValue = (String, String);
 type IndexEntry = (String, usize);
+
+type IndexOffsetLength = (usize, usize);
+
+/// A struct containing the data file and index file. The ReadDataStore struct utilizes the
+/// index file to speed up reads via Seeks. The DataStore struct does not utilize the index file.
+/// Note: The ReadDataStore struct is intended to be used in a read-only context and therefore
+/// does not expose the ability to add or delete data.  
+pub(crate) struct ReadDataStore {
+    data: Data,
+    _index: Index,
+}
+
+impl ReadDataStore {
+    pub fn new(path: Option<PathBuf>, parent: String) -> Result<Self, TapDataStoreError> {
+        let index = Index::new(path.clone())?;
+        let index_offset_length = index.find_parent_offset_and_length(parent)?;
+        let data = Data::new(path, Some(index_offset_length))?;
+        Ok(Self {
+            data,
+            _index: index,
+        })
+    }
+
+    pub fn read_link(&self, parent: &str, link: &str) -> Result<LinkValue, TapDataStoreError> {
+        let links = self.data.get(parent, Some(link))?;
+        // This is ok as data.get will return an error if the link is not found
+        Ok(links[0].clone())
+    }
+
+    pub fn read_parent(&self, parent: &str) -> Result<Vec<LinkValue>, TapDataStoreError> {
+        self.data.get(parent, None)
+    }
+}
 
 pub(crate) struct DataStore {
     data: Data,
@@ -10,7 +44,7 @@ pub(crate) struct DataStore {
 
 impl DataStore {
     pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
-        let data = Data::new(path.clone())?;
+        let data = Data::new(path.clone(), None)?;
         let index = Index::new(path)?;
         Ok(Self { data, index })
     }
@@ -73,14 +107,18 @@ impl DataStore {
     }
 }
 
-struct Data {
+pub(super) struct Data {
     path: PathBuf,
     state: Vec<(String, Vec<LinkValue>)>,
 }
 
 // Publicly exposed
 impl Data {
-    pub fn new(path: Option<PathBuf>) -> Result<Self, TapDataStoreError> {
+    pub fn new(
+        path: Option<PathBuf>,
+        index_offset_length: Option<IndexOffsetLength>,
+    ) -> Result<Self, TapDataStoreError> {
+        // Determine path
         let (file_exists, path) = if let Some(path) = path {
             (path.exists(), path)
         } else {
@@ -105,10 +143,48 @@ impl Data {
 
         // Parse file if it exists
         if file_exists {
-            let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
-                kind: TapDataStoreErrorKind::FileReadFailed,
-                message: format!("Could not read data file at {}: {e}", path.display()),
-            })?;
+            #[allow(unused_assignments)]
+            let mut file_as_str: String = String::new();
+
+            // If index_offset_length is set, then we are reading from the index file
+            if let Some((offset, length)) = index_offset_length {
+                let mut f = File::open(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileOpenFailed,
+                    message: format!("Could not open data file at {}: {e}", path.display()),
+                })?;
+                f.seek(SeekFrom::Start(offset as u64))
+                    .map_err(|e| TapDataStoreError {
+                        kind: TapDataStoreErrorKind::FileSeekFailed,
+                        message: format!(
+                            "Could not seek to offset {offset} in data file at {}: {e}",
+                            path.display()
+                        ),
+                    })?;
+                let mut buf = if length == 0 {
+                    // If length is 0, then we are reading the rest of the file
+                    let metadata = f.metadata().map_err(|e| TapDataStoreError {
+                        kind: TapDataStoreErrorKind::FileReadMetadataFailed,
+                        message: format!(
+                            "Could not read metadata for data file at {}: {e}",
+                            path.display()
+                        ),
+                    })?;
+                    let length = metadata.len() - offset as u64;
+                    vec![0u8; length as usize]
+                } else {
+                    vec![0u8; length]
+                };
+                f.read_exact(&mut buf).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileReadFailed,
+                    message: format!("Could not read data file at {}: {e}", path.display()),
+                })?;
+                file_as_str = buf.iter().map(|b| *b as char).collect();
+            } else {
+                file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileReadFailed,
+                    message: format!("Could not read data file at {}: {e}", path.display()),
+                })?;
+            }
             let state = Data::parse_file(&file_as_str)?;
             Ok(Self { path, state })
         } else {
@@ -249,7 +325,7 @@ mod data_public {
     #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_new_no_path_correct_file_name() {
         let expected_file_name = ".tap_data";
-        let mut data = Data::new(None).unwrap();
+        let mut data = Data::new(None, None).unwrap();
         assert!(data.path.to_str().unwrap().ends_with(expected_file_name));
         data.cleanup().expect("Could not clean up data store");
     }
@@ -258,7 +334,7 @@ mod data_public {
     fn test_new_with_path_correct_file_name() {
         let expected_file_name =
             get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(PathBuf::from(&expected_file_name))).unwrap();
+        let mut data = Data::new(Some(PathBuf::from(&expected_file_name)), None).unwrap();
         assert_eq!(data.path, expected_file_name);
         data.cleanup().expect("Could not clean up data store");
     }
@@ -271,7 +347,7 @@ mod data_public {
             "parent1->\nlink1|value1\nlink2|value2\nparent2 ->\nlink3|value3\nlink4|value4",
         )
         .unwrap();
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         assert_eq!(
             data.state,
             vec![
@@ -295,9 +371,53 @@ mod data_public {
     }
 
     #[test]
+    fn test_set_state_correct_reader_eof() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(
+            &data_path,
+            "parent1->\nlink1|value1\nlink2|value2\nparent2 ->\nlink3|value3\nlink4|value4",
+        )
+        .unwrap();
+        let mut data = Data::new(Some(data_path), Some((36, 0))).unwrap();
+        assert_eq!(
+            data.state,
+            vec![(
+                "parent2 ".to_string(),
+                vec![
+                    ("link3".to_string(), "value3".to_string()),
+                    ("link4".to_string(), "value4".to_string())
+                ]
+            ),]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_set_state_correct_reader() {
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        fs::write(
+            &data_path,
+            "parent1->\nlink1|value1\nlink2|value2\nparent2 ->\nlink3|value3\nlink4|value4",
+        )
+        .unwrap();
+        let mut data = Data::new(Some(data_path), Some((0, 35))).unwrap();
+        assert_eq!(
+            data.state,
+            vec![(
+                "parent1".to_string(),
+                vec![
+                    ("link1".to_string(), "value1".to_string()),
+                    ("link2".to_string(), "value2".to_string())
+                ]
+            ),]
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
     fn test_add_link_when_parent_doesnt_exist() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         let res = data.add_link("parent1", "link1", "value1");
         assert!(res.is_ok());
         assert_eq!(
@@ -313,7 +433,7 @@ mod data_public {
     #[test]
     fn test_add_link_when_link_doesnt_exist() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![
@@ -340,7 +460,7 @@ mod data_public {
     #[test]
     fn test_add_link_when_link_already_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -363,7 +483,7 @@ mod data_public {
     #[test]
     fn test_get_parent_when_parent_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![
@@ -386,7 +506,7 @@ mod data_public {
     #[test]
     fn test_get_parent_when_parent_does_not_exist() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         let res = data.get("search-engines", None);
         assert_eq!(
             res.unwrap_err().kind,
@@ -399,7 +519,7 @@ mod data_public {
     #[test]
     fn test_get_parent_and_link_when_parent_exists_and_link_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![
@@ -419,7 +539,7 @@ mod data_public {
     #[test]
     fn test_get_parent_and_link_when_parent_exists_and_link_does_not_exist() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![
@@ -445,7 +565,7 @@ mod data_public {
     #[test]
     fn test_remove_parent_when_parent_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -459,7 +579,7 @@ mod data_public {
     #[test]
     fn test_remove_parent_when_parent_does_not_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         let res = data.remove("search-engines", None);
         assert_eq!(
             res.unwrap_err().kind,
@@ -472,7 +592,7 @@ mod data_public {
     #[test]
     fn test_remove_parent_and_link_when_parent_exists_and_link_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -486,7 +606,7 @@ mod data_public {
     #[test]
     fn test_remove_link_when_parent_exists_and_link_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![
@@ -509,7 +629,7 @@ mod data_public {
     #[test]
     fn test_remove_link_when_parent_does_not_exist_and_link_exists_in_other_parent() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -532,7 +652,7 @@ mod data_public {
     #[test]
     fn test_upsert_link_when_link_does_not_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -555,7 +675,7 @@ mod data_public {
     #[test]
     fn test_upsert_link_when_link_already_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -575,7 +695,7 @@ mod data_public {
     #[test]
     fn test_upsert_link_when_no_parent() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "search-engines".to_string(),
             vec![("google".to_string(), "www.google.com".to_string())],
@@ -660,7 +780,7 @@ impl Data {
                         message: "A link/value line of a data file is expected to contain '|' character separating link and value. For example, google|https://google.com".to_string(),
                     })?;
                 validate_link(link)?;
-                temp_links.push((link.to_string(), value.to_string()));
+                temp_links.push((link.trim().to_string(), value.trim().to_string()));
             } else {
                 return Err(TapDataStoreError {
                     kind: TapDataStoreErrorKind::ParseError,
@@ -814,7 +934,7 @@ mod data_private {
     #[test]
     fn test_state_to_file_string_empty() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         let res = data.state_to_file_string();
         assert_eq!(res.0, "");
         assert_eq!(res.1, vec![]);
@@ -824,7 +944,7 @@ mod data_private {
     #[test]
     fn test_state_to_file_string_spacing() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "parent1".to_string(),
             vec![("link1".to_string(), "value1".to_string())],
@@ -838,7 +958,7 @@ mod data_private {
     #[test]
     fn test_state_to_file_string_sorted() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![
             (
                 "parent1".to_string(),
@@ -870,7 +990,7 @@ mod data_private {
     #[test]
     fn test_save_to_file() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
-        let mut data = Data::new(Some(data_path)).unwrap();
+        let mut data = Data::new(Some(data_path), None).unwrap();
         data.state = vec![(
             "parent1".to_string(),
             vec![("link1".to_string(), "value1".to_string())],
@@ -894,7 +1014,7 @@ impl Data {
     }
 }
 
-struct Index {
+pub(super) struct Index {
     path: PathBuf,
     state: Vec<IndexEntry>, // parent, offset
 }
@@ -1004,6 +1124,33 @@ mod index_public {
 
 // Privately exposed
 impl Index {
+    /// If the index goes to the end of the file, return 0 for length. This indicates to
+    /// the caller that they need to make a buffer large enough to read to EOF.
+    fn find_parent_offset_and_length(
+        &self,
+        parent: String,
+    ) -> Result<IndexOffsetLength, TapDataStoreError> {
+        let elem = self
+            .state
+            .iter()
+            .position(|(p, _)| p.trim() == parent.trim());
+        match elem {
+            Some(elem) => {
+                if elem == self.state.len() - 1 {
+                    return Ok((self.state[elem].1, 0));
+                }
+                Ok((
+                    self.state[elem].1,
+                    self.state[elem + 1].1 - self.state[elem].1,
+                ))
+            }
+            None => Err(TapDataStoreError {
+                kind: TapDataStoreErrorKind::ParseError,
+                message: format!("Could not find parent '{parent}' in index"),
+            }),
+        }
+    }
+
     fn parse_file(file_as_str: &str) -> Result<Vec<IndexEntry>, TapDataStoreError> {
         let mut state = vec![];
         for line in file_as_str.lines() {
@@ -1354,6 +1501,9 @@ pub enum TapDataStoreErrorKind {
     #[cfg(test)]
     FileDeleteFailed,
     FileReadFailed,
+    FileReadMetadataFailed,
+    FileOpenFailed,
+    FileSeekFailed,
     FileWriteFailed,
     LinkAlreadyExists,
     LinkNotFound,
@@ -1388,7 +1538,12 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::FileCreateFailed => write!(f, "File create failed"),
             #[cfg(test)]
             TapDataStoreErrorKind::FileDeleteFailed => write!(f, "File delete failed"),
+            TapDataStoreErrorKind::FileOpenFailed => write!(f, "File open failed"),
+            TapDataStoreErrorKind::FileSeekFailed => write!(f, "File seek failed"),
             TapDataStoreErrorKind::FileReadFailed => write!(f, "File read failed"),
+            TapDataStoreErrorKind::FileReadMetadataFailed => {
+                write!(f, "File read metadata failed")
+            }
             TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
             TapDataStoreErrorKind::LinkAlreadyExists => write!(f, "Link already exists"),
             TapDataStoreErrorKind::LinkNotFound => write!(f, "Link not found"),
