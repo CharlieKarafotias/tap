@@ -88,7 +88,7 @@ impl Data {
         validate_parent(parent)?;
         validate_link(link)?;
         if let Some((_, links)) = self.state.iter_mut().find(|(p, _)| p == parent) {
-            if links.iter().any(|(l, _)| l == link) {
+            if links.iter().any(|(l, _)| l.trim() == link) {
                 return Err(TapDataStoreError {
                     kind: TapDataStoreErrorKind::LinkAlreadyExists,
                     message: format!("Link {link} already exists for parent {parent}"),
