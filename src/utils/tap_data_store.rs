@@ -1,4 +1,5 @@
 use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
 use std::{fmt, fs, fs::File, path::PathBuf};
 
 type LinkValue = (String, String);
@@ -100,6 +101,18 @@ impl DataStore {
         value: String,
     ) -> Result<(), TapDataStoreError> {
         self.data.upsert_link(&parent, &link, &value)?;
+        let index_offsets = self.data.save_to_file()?;
+        self.index.update(index_offsets);
+        self.index.save_to_file()?;
+        Ok(())
+    }
+
+    pub fn import(
+        &mut self,
+        path: PathBuf,
+        import_type: ImportType,
+    ) -> Result<(), TapDataStoreError> {
+        self.data.import(import_type, path.clone())?;
         let index_offsets = self.data.save_to_file()?;
         self.index.update(index_offsets);
         self.index.save_to_file()?;
@@ -312,11 +325,46 @@ impl Data {
         }
         Ok(())
     }
+
+    pub fn import(
+        &mut self,
+        file_type: ImportType,
+        path: PathBuf,
+    ) -> Result<(), TapDataStoreError> {
+        validate_path(&file_type, &path)?;
+        let file_exists = path.try_exists().map_err(|e| TapDataStoreError {
+            kind: TapDataStoreErrorKind::FileOpenFailed,
+            message: format!("Unable to determine if file {} exists: {e}", path.display()),
+        })?;
+        if !file_exists {
+            return Err(TapDataStoreError {
+                kind: TapDataStoreErrorKind::FileOpenFailed,
+                message: format!("File {} does not exist", path.display()),
+            });
+        }
+        match file_type {
+            ImportType::Tap => {
+                let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileReadFailed,
+                    message: format!("Could not read data file at {}: {e}", path.display()),
+                })?;
+                let state = Data::parse_file(&file_as_str)?;
+                // TODO: refactor to hashmap? This would speed up import
+                state.iter().for_each(|(parent, links)| {
+                    links.iter().for_each(|(link, value)| {
+                        self.upsert_link(parent, link, value).unwrap();
+                    })
+                });
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod data_public {
-    use super::{Data, FileType, TapDataStoreErrorKind, get_test_file_path};
+    use super::{Data, FileType, ImportType, TapDataStoreErrorKind, get_test_file_path};
     use std::fs;
     use std::path::PathBuf;
 
@@ -563,6 +611,101 @@ mod data_public {
     }
 
     #[test]
+    fn test_import_tap_bad_file() {
+        let import_path = "rando_file.pdf";
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path), None).unwrap();
+        let res = data.import(ImportType::Tap, PathBuf::from(import_path));
+        assert_eq!(
+            res.unwrap_err().kind,
+            TapDataStoreErrorKind::InvalidFileExtension
+        );
+        data.cleanup().expect("Could not clean up data store");
+    }
+
+    #[test]
+    fn test_import_tap_data_parent_exists_but_link_does_not() {
+        let import_path = get_test_file_path(FileType::Tap).expect("Could not get test file path");
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path), None).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        fs::write(&import_path, "search-engines->\nyahoo|www.yahoo.com\n").unwrap();
+
+        let res = data.import(ImportType::Tap, import_path.clone());
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![
+                    ("google".to_string(), "www.google.com".to_string()),
+                    ("yahoo".to_string(), "www.yahoo.com".to_string())
+                ]
+            ),]
+        );
+        data.cleanup().expect("Could not clean up data store");
+        fs::remove_file(import_path).expect("Could not remove import file");
+    }
+
+    #[test]
+    fn test_import_tap_data_parent_does_not_exist() {
+        let import_path = get_test_file_path(FileType::Tap).expect("Could not get test file path");
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path), None).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        fs::write(&import_path, "repo->\ngh|www.github.com\n").unwrap();
+
+        let res = data.import(ImportType::Tap, import_path.clone());
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![
+                (
+                    "search-engines".to_string(),
+                    vec![("google".to_string(), "www.google.com".to_string()),]
+                ),
+                (
+                    "repo".to_string(),
+                    vec![("gh".to_string(), "www.github.com".to_string()),]
+                ),
+            ]
+        );
+        data.cleanup().expect("Could not clean up data store");
+        fs::remove_file(import_path).expect("Could not remove import file");
+    }
+
+    #[test]
+    fn test_import_tap_data_parent_exists_and_link_exists() {
+        let import_path = get_test_file_path(FileType::Tap).expect("Could not get test file path");
+        let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
+        let mut data = Data::new(Some(data_path), None).unwrap();
+        data.state = vec![(
+            "search-engines".to_string(),
+            vec![("google".to_string(), "www.google.com".to_string())],
+        )];
+        fs::write(&import_path, "search-engines->\ngoogle|abc\n").unwrap();
+
+        let res = data.import(ImportType::Tap, import_path.clone());
+        // TODO: currently the link is overwritten, make this a param instead?
+        assert!(res.is_ok());
+        assert_eq!(
+            data.state,
+            vec![(
+                "search-engines".to_string(),
+                vec![("google".to_string(), "abc".to_string()),]
+            ),]
+        );
+        data.cleanup().expect("Could not clean up data store");
+        fs::remove_file(import_path).expect("Could not remove import file");
+    }
+
+    #[test]
     fn test_remove_parent_when_parent_exists() {
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
         let mut data = Data::new(Some(data_path), None).unwrap();
@@ -782,6 +925,9 @@ impl Data {
                 validate_link(link)?;
                 temp_links.push((link.trim().to_string(), value.trim().to_string()));
             } else {
+                if line.trim().is_empty() {
+                    continue;
+                }
                 return Err(TapDataStoreError {
                     kind: TapDataStoreErrorKind::ParseError,
                     message: format!(
@@ -1395,16 +1541,48 @@ fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
     Ok(())
 }
 
+/// Checks if the file extension is valid for the import file type
+fn validate_path(file_type: &ImportType, path: &Path) -> Result<(), TapDataStoreError> {
+    match file_type {
+        ImportType::Tap => {
+            let extension = path.extension().ok_or(TapDataStoreError {
+                kind: TapDataStoreErrorKind::InvalidFileExtension,
+                message: format!(
+                    "Unable to get file extension for tap import file: {}",
+                    path.display()
+                ),
+            })?;
+            if extension != "tap" {
+                Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::InvalidFileExtension,
+                    message: format!(
+                        "Invalid file extension for tap import file: {}",
+                        path.display()
+                    ),
+                })?;
+            }
+            Ok(())
+        }
+    }?;
+    Ok(())
+}
+
 #[cfg(test)]
 enum FileType {
     Data,
     Index,
+    Tap,
+}
+
+pub enum ImportType {
+    Tap,
 }
 
 #[cfg(test)]
 /// Returns a test file path for either an index or data file. A test file name is of the format:
 /// - Index files: .tap_index_{test_name}_{timestamp}
 /// - Data files: .tap_data_{test_name}_{timestamp_millis}
+/// - Tap files: {test_name}_{timestamp_millis}.tap
 /// ## Errors
 /// - `TapDataStoreErrorKind::CurrentTimeError` - if unable to get current system time
 /// - Will panic if unable to get thread name
@@ -1425,6 +1603,7 @@ fn get_test_file_path(file_type: FileType) -> Result<PathBuf, TapDataStoreError>
     path_buf = match file_type {
         FileType::Data => path_buf.join(format!(".tap_data_{test_name}_{timestamp}")),
         FileType::Index => path_buf.join(format!(".tap_index_{test_name}_{timestamp}")),
+        FileType::Tap => path_buf.join(format!("{test_name}_{timestamp}.tap")),
     };
     Ok(path_buf)
 }
@@ -1505,6 +1684,7 @@ pub enum TapDataStoreErrorKind {
     FileOpenFailed,
     FileSeekFailed,
     FileWriteFailed,
+    InvalidFileExtension,
     LinkAlreadyExists,
     LinkNotFound,
     ParentEntityNotFound,
@@ -1545,6 +1725,7 @@ impl fmt::Display for TapDataStoreErrorKind {
                 write!(f, "File read metadata failed")
             }
             TapDataStoreErrorKind::FileWriteFailed => write!(f, "File write failed"),
+            TapDataStoreErrorKind::InvalidFileExtension => write!(f, "Invalid file extension"),
             TapDataStoreErrorKind::LinkAlreadyExists => write!(f, "Link already exists"),
             TapDataStoreErrorKind::LinkNotFound => write!(f, "Link not found"),
             TapDataStoreErrorKind::ParentEntityNotFound => write!(f, "Parent entity not found"),
