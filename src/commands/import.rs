@@ -1,7 +1,9 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
+    utils::tap_data_store::{DataStore, ImportType},
 };
+use std::path::PathBuf;
 
 pub(crate) struct Import {
     name: String,
@@ -32,7 +34,7 @@ impl Command for Import {
 
     fn help_message(&self) -> String {
         format!(
-            "Tap import imports a bookmark file from one of the following browsers into Tap:\n{}\n\nExample Usage: {}",
+            "Tap import imports a bookmark file from one of the following browsers into Tap. Import will overwrite existing links:\n{}\n\nExample Usage: {}",
             "Chrome, Edge, Firefox, Opera, Safari, Tap",
             "tap --import <Chrome | Edge | Firefox | Opera | Safari | Tap> <bookmark file>"
         )
@@ -64,9 +66,12 @@ impl Command for Import {
                 ("Safari", f) => Ok(CommandResult::Value(format!(
                     "TODO: Implement import functionality from Safari: {f}"
                 ))),
-                ("Tap", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement import functionality from Tap: {f}"
-                ))),
+                ("Tap", f) => {
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    ds.import(PathBuf::from(f), ImportType::Tap)
+                        .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value("Import complete".to_string()))
+                }
                 (bad_browser, _) => Err(self.bad_browser_message(bad_browser)),
             },
             _ => Err(self.error_message()),
@@ -190,15 +195,14 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "GH-45: Should be an integration test due to DataStore dependency"]
     fn test_import_run_tap() {
         let cmd = Import::default();
         let args = vec!["Tap", "./test.tap"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement import functionality from Tap: ./test.tap".to_string(),
-        );
+        let expected = CommandResult::Value("Import complete".to_string());
         let res = cmd.run(args).expect("Could not display import");
         assert_eq!(res, expected);
     }
