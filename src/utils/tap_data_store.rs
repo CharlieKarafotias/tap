@@ -36,6 +36,11 @@ impl ReadDataStore {
     pub fn read_parent(&self, parent: &str) -> Result<Vec<LinkValue>, TapDataStoreError> {
         self.data.get(parent, None)
     }
+
+    pub fn links(&self, parent: &str) -> Result<Vec<String>, TapDataStoreError> {
+        let links = self.read_parent(parent)?;
+        Ok(links.iter().map(|(l, _)| l.clone()).collect())
+    }
 }
 
 pub(crate) struct DataStore {
@@ -1160,7 +1165,7 @@ impl Data {
     }
 }
 
-struct Index {
+pub struct Index {
     path: PathBuf,
     state: Vec<IndexEntry>, // parent, offset
 }
@@ -1210,8 +1215,15 @@ impl Index {
         }
     }
 
-    pub fn update(&mut self, offsets: Vec<IndexEntry>) {
+    fn update(&mut self, offsets: Vec<IndexEntry>) {
         self.state = offsets
+    }
+
+    pub fn parents(&self) -> Vec<String> {
+        self.state
+            .iter()
+            .map(|(parent, _)| parent.clone())
+            .collect()
     }
 }
 
