@@ -18,7 +18,14 @@ pub fn open_link(link: &str) -> Result<(), OsImplementationError> {
                     message: format!("Failed to start command xdg-open: {e}"),
                 })?
         }
-        // TODO: implement "windows" => (),
+        "windows" => Command::new("start")
+            .arg("\"\"")
+            .arg(format!("\"{link}\""))
+            .spawn()
+            .map_err(|e| OsImplementationError {
+                kind: OsImplementationErrorKind::CommandFailedToStart,
+                message: format!("Failed to start command start: {e}"),
+            })?,
         _ => {
             return Err(OsImplementationError {
                 kind: OsImplementationErrorKind::OsNotSupported,
