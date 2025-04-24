@@ -1,9 +1,8 @@
-use crate::utils::command::get_current_directory_name;
-use crate::utils::tap_data_store::ReadDataStore;
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
-    utils::tap_data_store::Index,
+    utils::command::get_current_directory_name,
+    utils::tap_data_store::{Index, ReadDataStore},
 };
 
 pub(crate) struct Show {
