@@ -31,6 +31,19 @@ impl Command for Init {
         s
     }
 
+    // TODO: when impl init functionality
+    // When implementing init functionality (for zsh shell)
+    // Determine user's $SHELL -> contains zsh
+    // Add a completions folder if it doesn't exist mkdir -p ~/.zsh/completions
+    // Write a completion file ~/.zsh/completions/_tap (see src/shell_completions/_tap for reference, this should actually be code instead of a file)
+    // Make file as executable chmod +x ~/.zsh/completions/_tap (what about windows???)
+    // Add following to top of file ~/.zshrc (or if it already exists, skip):
+    // fpath=(~/.zsh/completions $fpath)
+    // autoload -Uz compinit
+    // compinit
+    // Need one of the 2 (test out by deleting current setup (zshrc and completions folder) and running init):
+    // source ~/.zshrc
+    // Run exec zsh
     fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
         match args.len() {
             0 => todo!("Implement init Functionality"),
