@@ -1,4 +1,4 @@
-#compdef tap
+pub(super) const ZSH_COMPLETION: &str = r#"#compdef tap
 
 # Fetch parent entities dynamically by running `tap -s`. Then:
 # - skip the first line
@@ -16,3 +16,4 @@ case $state in
     _values 'Parent entities' $parents
     ;;
 esac
+"#;
