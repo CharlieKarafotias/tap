@@ -42,7 +42,7 @@ fn fpath_has_zsh_completions(zshrc_path: &Path) -> Result<bool, InitError> {
         .unwrap_or(Path::new(""))
         .join(".zsh")
         .join("completions");
-    Ok(zshrc_contents.contains(&format!("fpath+=({})", completions_path.display())))
+    Ok(zshrc_contents.contains(&format!("fpath=({} $fpath)", completions_path.display())))
 }
 
 /// Adds the following to the top of ~/.zshrc (if it doesn't already exist):

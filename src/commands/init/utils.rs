@@ -55,24 +55,3 @@ impl fmt::Display for InitErrorKind {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[ignore]
-    fn test_determine_user_shell_zsh() {
-        let mut env_vars = std::collections::HashMap::new();
-        env_vars.insert("SHELL", "/bin/zsh");
-        assert_eq!(determine_user_shell().unwrap(), Shell::Zsh)
-    }
-
-    #[test]
-    #[ignore]
-    fn test_determine_user_shell_unsupported_shell() {
-        let mut env_vars = std::collections::HashMap::new();
-        env_vars.insert("SHELL", "/bin/sh");
-        assert_eq!(determine_user_shell().unwrap(), Shell::NotSupported)
-    }
-}
