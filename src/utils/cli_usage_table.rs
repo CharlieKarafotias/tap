@@ -78,7 +78,7 @@ impl Display for Section {
             for element in &self.elements {
                 writeln!(
                     f,
-                    " {} {} {}",
+                    " {}  {}  {}",
                     self.pad(element.name.as_str(), 0),
                     self.pad(element.args.join(" ").as_str(), 1),
                     self.pad(element.description.as_str(), 2)
