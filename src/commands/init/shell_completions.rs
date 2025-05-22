@@ -13,7 +13,7 @@ parents=("${(@f)$(tap -s | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:spac
 #   sed -n '/^Commands:/,$p' |
 #   sed '1d' |
 #   grep '^[[:space:]]*-' |
-#   awk '{ 
+#   awk '{
 #     sub(/^[[:space:]]*/, "", $0);
 #     split($0, parts, /[[:space:]]{2,}/);
 #     opts_raw = parts[1];
@@ -48,6 +48,7 @@ commands=(
 
 _arguments \
   '1:parent entity:->parent' \
+  '2:command:->command' \
   '*::args:->args'
 
 case $state in
@@ -57,6 +58,13 @@ case $state in
         else
             _values 'No parent entities available' $commands
         fi
+    ;;
+    command)
+        # TODO: add check for if parent entity or commands
+        local selected_parent=$words[2]
+        local selected_links
+        selected_links=($(tap -s $selected_parent | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'))
+        _values 'Links' $selected_links
     ;;
 esac
 "#;
