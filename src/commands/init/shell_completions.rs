@@ -48,6 +48,7 @@ command_options=(
 _arguments \
   '1:parent entity:->parent' \
   '2:command:->command' \
+  '3:commandargs:->commandargs' \
   '*::args:->args'
 
 case $state in
@@ -89,6 +90,21 @@ case $state in
             selected_links=($(tap -s $selected_parent | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'))
             _values 'Links' $selected_links
         fi
+    ;;
+esac
+
+case $state in
+    commandargs)
+    local command=$words[2]
+    local subcommand=$words[3]
+    if [[ $command == "--import" || $command == "--export" ]]; then
+            _files
+    fi
+    if [[ $command == "-d" || $command == "--delete" || $command == "-s" || $command == "--show" || $command == "-u" || $command == "--upsert" ]]; then
+        local selected_links
+        selected_links=($(tap -s $subcommand | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'))
+        _values 'Links' $selected_links
+    fi
     ;;
 esac
 "#;
