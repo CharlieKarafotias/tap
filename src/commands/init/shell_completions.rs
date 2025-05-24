@@ -53,7 +53,6 @@ _arguments \
 
 case $state in
     parent)
-        # TODO: fix the message clearing, _message -r only cleans first line, but i want to clear all and regenerate suggestions
         if [[ -n "words[2]" && "${words[2]:0:1}" != "-" ]]; then
             _values 'Parent entities' $parents
         else
