@@ -48,8 +48,7 @@ command_options=(
 _arguments \
   '1:parent entity:->parent' \
   '2:command:->command' \
-  '*::args:->args' \
-  ":*::options:->options"
+  '*::args:->args'
 
 case $state in
     parent)
@@ -73,33 +72,22 @@ case $state in
             # Handle command descriptions
             case $selected_parent in
                 -a|--add)
-                    _message 'Add options'
-                    _values '' "here" $parents
+                    _values 'Add options' 'here' $parents
                     ;;
                 -d|--delete)
-                    _message 'Delete options'
-                    _values '' "here" $parents
+                    _values 'Delete options' 'here' $parents
                     ;;
                 -s|--show)
-                    _message 'Show options'
-                    _values '' "here" $parents
+                    _values 'Show options' 'here' $parents
                     ;;
                 -u|--upsert)
-                    _message 'Upsert options'
-                    _values '' "here" $parents
+                    _values 'Upsert options' 'here' $parents
                     ;;
                 --import)
-                    _message 'Import options'
-                    _values '' "Chrome" "Edge" "Firefox" "Opera" "Safari" "Tap"
+                    _values 'Import options' 'Chrome' 'Edge' 'Firefox' 'Opera' 'Safari' 'Tap'
                     ;;
                 --export)
-                    _message 'Export options'
-                    _values '' "Chrome" "Edge" "Firefox" "Opera" "Safari" "Tap"
-                    ;;
-                *)
-                    # For other commands, just show the description
-                    _message -r
-                    _message "$selected_parent"
+                    _values 'Export options' 'Chrome' 'Edge' 'Firefox' 'Opera' 'Safari' 'Tap'
                     ;;
             esac
         else
