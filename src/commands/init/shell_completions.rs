@@ -59,16 +59,10 @@ case $state in
         fi
     ;;
     command)
-        # Clear previous completions
-        _message -r
-        
         local selected_parent=$words[2]
         
         # Check if the selected word is a command or a parent entity
         if (($command_options[(Ie)$selected_parent])); then
-            # Clear any previous command-specific completions
-            _message -r
-            
             # Handle command descriptions
             case $selected_parent in
                 -a|--add)
