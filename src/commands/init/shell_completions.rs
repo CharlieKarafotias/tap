@@ -48,32 +48,62 @@ command_options=(
 _arguments \
   '1:parent entity:->parent' \
   '2:command:->command' \
-  '*::args:->args'
+  '*::args:->args' \
+  ":*::options:->options"
 
 case $state in
     parent)
-        if [[ "$parents" ]]; then
-            _values 'Parent entities' $parents $commands
+        # TODO: fix the message clearing, _message -r only cleans first line, but i want to clear all and regenerate suggestions
+        if [[ -n "words[2]" && "${words[2]:0:1}" != "-" ]]; then
+            _values 'Parent entities' $parents
         else
-            _values 'No parent entities available' $commands
+            _values 'Commands' $commands
         fi
     ;;
     command)
+        # Clear previous completions
+        _message -r
+        
         local selected_parent=$words[2]
         
         # Check if the selected word is a command or a parent entity
         if (($command_options[(Ie)$selected_parent])); then
-            # If it's a command option, provide command-specific completions
+            # Clear any previous command-specific completions
+            _message -r
+            
+            # Handle command descriptions
             case $selected_parent in
                 -a|--add)
-                    _values 'Add options' "parent" "link" "value"
+                    _message 'Add options'
+                    _values '' "here" $parents
                     ;;
                 -d|--delete)
-                    _values 'Delete options' "parent" "link"
+                    _message 'Delete options'
+                    _values '' "here" $parents
+                    ;;
+                -s|--show)
+                    _message 'Show options'
+                    _values '' "here" $parents
+                    ;;
+                -u|--upsert)
+                    _message 'Upsert options'
+                    _values '' "here" $parents
+                    ;;
+                --import)
+                    _message 'Import options'
+                    _values '' "Chrome" "Edge" "Firefox" "Opera" "Safari" "Tap"
+                    ;;
+                --export)
+                    _message 'Export options'
+                    _values '' "Chrome" "Edge" "Firefox" "Opera" "Safari" "Tap"
+                    ;;
+                *)
+                    # For other commands, just show the description
+                    _message -r
+                    _message "$selected_parent"
                     ;;
             esac
         else
-            print "DEBUG: Selected parent entity: $selected_parent"
             local selected_links
             selected_links=($(tap -s $selected_parent | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'))
             _values 'Links' $selected_links
