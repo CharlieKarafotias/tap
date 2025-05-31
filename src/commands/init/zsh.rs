@@ -1,18 +1,38 @@
 use super::shell_completions::ZSH_COMPLETION;
 use super::utils::{InitError, InitErrorKind};
+use std::path::PathBuf;
 use std::{
     env,
     fs::{self, File, create_dir_all},
     io::Write,
-    path::Path,
 };
+
+/// Returns the path to the user's home directory
+fn home_path() -> Result<PathBuf, InitError> {
+    Ok(PathBuf::from(env::var("HOME").map_err(|e| {
+        InitError::new(
+            InitErrorKind::ReadFailed,
+            format!("Unable to determine home directory: {e}"),
+        )
+    })?))
+}
+
+/// Returns ~/.zshrc
+fn zshrc_path() -> Result<PathBuf, InitError> {
+    Ok(home_path()?.join(".zshrc"))
+}
+
+/// Returns ~/.zsh/
+fn completions_path() -> Result<PathBuf, InitError> {
+    Ok(home_path()?.join(".zsh"))
+}
 
 /// Creates ~/.zshrc if it doesn't exist.
 ///
 /// # Errors
 /// - If the file cannot be created, an InitError of kind WriteFailed will be returned
-fn create_if_not_exists(zshrc_path: &Path) -> Result<(), InitError> {
-    println!("Creating ~/.zshrc");
+fn create_zshrc_if_not_exists() -> Result<(), InitError> {
+    let zshrc_path = zshrc_path()?;
     let res = File::create_new(zshrc_path);
     match res {
         Ok(_) => Ok(()),
@@ -20,8 +40,10 @@ fn create_if_not_exists(zshrc_path: &Path) -> Result<(), InitError> {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
                 return Ok(());
             }
-            println!("Unable to create ~/.zshrc");
-            Err(InitError::new(InitErrorKind::WriteFailed, e.to_string()))
+            Err(InitError::new(
+                InitErrorKind::WriteFailed,
+                format!("Unable to create ~/.zshrc: {e}"),
+            ))
         }
     }
 }
@@ -30,24 +52,20 @@ fn create_if_not_exists(zshrc_path: &Path) -> Result<(), InitError> {
 ///
 /// # Errors
 /// - If an error occurs while determining if completions folder exists, an InitError of kind ReadFailed will be returned
-fn fpath_has_zsh_completions(zshrc_path: &Path) -> Result<bool, InitError> {
-    let zshrc_contents = fs::read_to_string(zshrc_path).map_err(|e| {
+fn fpath_has_zsh_completions() -> Result<bool, InitError> {
+    let zshrc_path = zshrc_path()?;
+    let zshrc_contents = fs::read_to_string(&zshrc_path).map_err(|e| {
         InitError::new(
             InitErrorKind::ReadFailed,
             format!("Unable to read ~/.zshrc: {e}"),
         )
     })?;
-    // TODO: adjust completion path to ~/.zsh/ instead of ~/.zsh/completions
-    let completions_path = zshrc_path
-        .parent()
-        .unwrap_or(Path::new(""))
-        .join(".zsh")
-        .join("completions");
+    let completions_path = completions_path()?;
     Ok(zshrc_contents.contains(&format!("fpath=({} $fpath)", completions_path.display())))
 }
 
 /// Adds the following to the top of ~/.zshrc (if it doesn't already exist):
-/// fpath+=($home/.zsh/completions)
+/// fpath+=($home/.zsh)
 /// autoload -Uz compinit && compinit
 ///
 /// _This function assumes that `create_zshrc_if_not_exists` has already been called_
@@ -55,23 +73,17 @@ fn fpath_has_zsh_completions(zshrc_path: &Path) -> Result<bool, InitError> {
 /// # Errors
 /// - If the ~/.zshrc file cannot be written, an InitError of kind WriteFailed will be returned
 /// - If the ~/.zshrc file cannot be read, an InitError of kind ReadFailed will be returned
-fn add_fpath_and_autocompletions_if_not_exists(zshrc_path: &Path) -> Result<(), InitError> {
-    println!("Adding fpath and auto-completions to ~/.zshrc if needed");
-    // TODO: adjust completion path to ~/.zsh/ instead of ~/.zsh/completions
-    // TODO: should this be added to top or bottom? Right now it's added to the top
-    let completions_path = zshrc_path
-        .parent()
-        .unwrap_or(Path::new(""))
-        .join(".zsh")
-        .join("completions");
+fn add_fpath_and_autocompletions_if_not_exists() -> Result<(), InitError> {
+    let zshrc_path = zshrc_path()?;
+    let completions_path = completions_path()?;
     let fpath = format!("fpath=({} $fpath)", completions_path.display());
     let autoload_compinit = "autoload -Uz compinit\ncompinit";
 
-    let mut f = fs::read_to_string(zshrc_path)
+    let mut f = fs::read_to_string(&zshrc_path)
         .map_err(|e| InitError::new(InitErrorKind::ReadFailed, e.to_string()))?;
-    let contains_fpath = fpath_has_zsh_completions(zshrc_path)?;
+    let contains_fpath = fpath_has_zsh_completions()?;
     let contains_autoload_compinit =
-        f.contains(autoload_compinit) || f.contains("autoload -Uz compinit\ncompinit");
+        f.contains(autoload_compinit) || f.contains("autoload -Uz compinit && compinit");
 
     if !contains_autoload_compinit {
         f = format!("{autoload_compinit}\n{f}");
@@ -85,14 +97,15 @@ fn add_fpath_and_autocompletions_if_not_exists(zshrc_path: &Path) -> Result<(), 
     Ok(())
 }
 
-/// Writes the contents of ZSH_COMPLETION to ~/.zsh/completions/_tap
+/// Writes the contents of ZSH_COMPLETION to ~/.zsh/_tap
 ///
 /// # Errors
 /// - If the directories for site-functions cannot be created, an InitError of kind WriteFailed will be returned
 /// - If the file cannot be written, an InitError of kind WriteFailed will be returned
 /// - If the file cannot be made executable, an InitError of kind WriteFailed will be returned
-fn add_completions_to_site_functions(p: &Path) -> Result<(), InitError> {
-    create_dir_all(p).map_err(|e| {
+fn add_completions_to_site_functions() -> Result<(), InitError> {
+    let p = completions_path()?;
+    create_dir_all(&p).map_err(|e| {
         InitError::new(
             InitErrorKind::WriteFailed,
             format!(
@@ -118,25 +131,8 @@ fn add_completions_to_site_functions(p: &Path) -> Result<(), InitError> {
 
 /// Updates ~/.zshrc to include tap completions
 pub(super) fn update_zshrc() -> Result<(), InitError> {
-    let home_path = match env::var("HOME") {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(InitError::new(
-                InitErrorKind::ReadFailed,
-                format!("Unable to determine home directory: {e}"),
-            ));
-        }
-    };
-    let zshrc_path = Path::new(&home_path).join(".zshrc");
-
-    create_if_not_exists(zshrc_path.as_path())?;
-    add_fpath_and_autocompletions_if_not_exists(zshrc_path.as_path())?;
-    // TODO: adjust completion path to ~/.zsh/ instead of ~/.zsh/completions
-    add_completions_to_site_functions(
-        Path::new(&home_path)
-            .join(".zsh")
-            .join("completions")
-            .as_path(),
-    )?;
+    create_zshrc_if_not_exists()?;
+    add_fpath_and_autocompletions_if_not_exists()?;
+    add_completions_to_site_functions()?;
     Ok(())
 }

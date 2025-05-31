@@ -6,7 +6,7 @@ pub(super) const ZSH_COMPLETION: &str = r#"#compdef tap
 # in a directory in your $fpath. For example:
 #
 #   mkdir -p ~/.zsh/
-#   tap init zsh > ~/.zsh/_tap
+#   tap --init zsh > ~/.zsh/_tap
 #
 # Then add the following line to your ~/.zshrc file:
 #
@@ -21,7 +21,7 @@ pub(super) const ZSH_COMPLETION: &str = r#"#compdef tap
 #
 # Alternatively, you can run the following tap command to automatically setup shell completions:
 #
-#   tap init --auto
+#   tap --init auto
 
 # Fetch parent entities dynamically by running `tap -s`. Then:
 # - skip the first line
@@ -106,6 +106,9 @@ case $state in
                     ;;
                 --export)
                     _values 'Export options' 'Chrome' 'Edge' 'Firefox' 'Opera' 'Safari' 'Tap'
+                    ;;
+                --init)
+                    _values 'Init options' 'auto' 'zsh'
                     ;;
             esac
         else

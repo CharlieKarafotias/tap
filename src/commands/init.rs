@@ -13,7 +13,7 @@ use zsh::update_zshrc;
 pub(crate) struct Init {
     name: String,
     description: String,
-    args: [String; 0],
+    args: [String; 1],
 }
 
 impl Default for Init {
@@ -21,41 +21,58 @@ impl Default for Init {
         Self {
             name: "-i, --init".to_string(),
             description: "Setup Tap and shell completions".to_string(),
-            args: [],
+            args: ["<auto|zsh>".to_string()],
         }
     }
 }
 
 impl Command for Init {
     fn error_message(&self) -> String {
-        "too many arguments, see the Usage section with tap --init --help".to_string()
+        "invalid arguments, see the Usage section with tap --init --help".to_string()
     }
 
     fn help_message(&self) -> String {
         let mut s = String::new();
-        s.push_str("Initializes Tap (Shell Auto-Completion, etc.).\n\n");
-        s.push_str("Example Usage: tap --init");
+        s.push_str("Initialize Tap Auto-Completion\n\n");
+        s.push_str("Tap currently supports auto-completion for zsh.\n");
+        s.push_str("Installation: \n\n");
+        s.push_str("  - To automatically setup shell completions, run tap --init auto\n");
+        s.push_str("  - For manual setup:\n");
+        s.push_str("      1. Make a .zsh directory: mkdir -p ~/.zsh/\n");
+        s.push_str(
+            "      2. Save the completion file to ~/.zsh/_tap: tap --init zsh > ~/.zsh/_tap\n",
+        );
+        s.push_str("      3. Add the following line to your .zshrc file: fpath=(~/.zsh/ $fpath)\n");
+        s.push_str("      4. Add the following line to your .zshrc file after fpath line: autoload -Uz compinit && compinit\n\n");
+        s.push_str("Command Structure: tap --init <auto | zsh>\n\n");
+        s.push_str("Example Usage: \n");
+        s.push_str("  - Return zsh shell completion: tap --init zsh\n");
+        s.push_str(
+            "  - Automatically setup shell completion based on current shell: tap --init auto",
+        );
         s
     }
 
     fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
         match args.len() {
-            0 => {
-                match determine_user_shell() {
-                    Ok(Shell::Zsh) => update_zshrc().map_err(|e| e.to_string()),
-                    Ok(Shell::NotSupported) => Err(self.error_message()),
-                    Err(e) => Err(e.to_string()),
-                }?;
-                Ok(CommandResult::Value(
-                    "Updated shell completions, restart your shell for changes to take effect"
-                        .to_string(),
-                ))
-            }
             1 => {
-                if args[0] == "--help" {
-                    Ok(CommandResult::Value(self.help_message()))
-                } else {
-                    Err(self.error_message())
+                match args[0].as_str() {
+                    "zsh" => Ok(CommandResult::Value(
+                        shell_completions::ZSH_COMPLETION.to_string(),
+                    )),
+                    "auto" => {
+                        match determine_user_shell() {
+                            Ok(Shell::Zsh) => update_zshrc().map_err(|e| e.to_string()),
+                            Ok(Shell::NotSupported) => Err("tap does not support your shell, please use zsh for shell completions".to_string()),
+                            Err(e) => Err(e.to_string()),
+                        }?;
+                        Ok(CommandResult::Value(
+                            "Updated shell completions, restart your shell for changes to take effect"
+                                .to_string(),
+                        ))
+                    }
+                    "--help" => Ok(CommandResult::Value(self.help_message())),
+                    _ => Err(self.error_message()),
                 }
             }
             _ => Err(self.error_message()),
