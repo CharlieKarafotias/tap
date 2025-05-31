@@ -50,12 +50,12 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
   - [ ] Safari
   - [x] Tap
 - [x] Implement validation to ensure imported data follows correct schema
-- [ ] Implement export functionality to generate browser-compatible bookmark files
-  - [ ] Chrome
-  - [ ] Edge
-  - [ ] Firefox
-  - [ ] Opera
-  - [ ] Safari
+- [x] Implement export functionality to generate browser-compatible bookmark files
+  - [x] Chrome
+  - [x] Edge
+  - [x] Firefox
+  - [x] Opera
+  - [x] Safari
   - [x] Tap
 - [ ] Write tests for import/export features
 

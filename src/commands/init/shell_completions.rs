@@ -102,10 +102,10 @@ case $state in
                     _values 'Upsert options' 'here' $parents
                     ;;
                 --import)
-                    _values 'Import options' 'Chrome' 'Edge' 'Firefox' 'Opera' 'Safari' 'Tap'
+                    _values 'Import options' 'Browser' 'Tap'
                     ;;
                 --export)
-                    _values 'Export options' 'Chrome' 'Edge' 'Firefox' 'Opera' 'Safari' 'Tap'
+                    _values 'Export options' 'Browser' 'Tap'
                     ;;
                 --init)
                     _values 'Init options' 'auto' 'zsh'
