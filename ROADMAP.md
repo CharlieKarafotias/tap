@@ -6,9 +6,8 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 
 - [x] Set up the project repository
 - [x] Initialize Rust project with Cargo
-- [x] Set up SurrealDB database
 - [x] Define initial data schema for storing entities and links
-- [x] Implement basic CLI structure using Clap for argument parsing
+- [x] Implement basic CLI
 
 ## Phase 2: CRUD Operations for Entities and Links
 
@@ -28,9 +27,10 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 
 ## Phase 4: Auto-Completion
 
-- [ ] Implement dynamic auto-completion for parent entities
-- [ ] Implement dynamic auto-completion for entity keys
-- [ ] Integrate with shell completions (Bash, Zsh, Fish, etc.)
+- [x] Implement dynamic auto-completion for parent entities
+- [x] Implement dynamic auto-completion for entity keys
+- [x] Zsh auto-completion
+- [ ] Bash auto-completion
 - [ ] Write tests for auto-completion behavior
 
 ## Phase 5: Interactive Terminal UI (TUI)
@@ -55,7 +55,7 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 - [x] Implement Windows support
 - [x] Test on macOS
 - [ ] Test on Linux
-- [] Test on Windows
+- [ ] Test on Windows
 
 ## Phase 8: Built-in Updater
 
