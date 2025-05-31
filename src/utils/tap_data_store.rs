@@ -356,6 +356,9 @@ impl Data {
             });
         }
         match file_type {
+            ImportExportType::Browser => {
+                // TODO: Implement me
+            }
             ImportExportType::Tap => {
                 let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
                     kind: TapDataStoreErrorKind::FileReadFailed,
@@ -378,13 +381,52 @@ impl Data {
         mut dest: PathBuf,
         file_type: ImportExportType,
     ) -> Result<String, TapDataStoreError> {
-        if dest.is_dir() {
-            dest = dest.join("export.tap")
-        }
-
         // copy datastore file to dest if tap
         match file_type {
+            ImportExportType::Browser => {
+                // Works for Chrome, Opera, Firefox, Safari
+                // TODO: test edge
+                if dest.is_dir() {
+                    dest = dest.join("bookmarks.html")
+                }
+                validate_path(&ImportExportType::Browser, &dest)?;
+                let curr_time = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|err| TapDataStoreError {
+                        kind: TapDataStoreErrorKind::OSError,
+                        message: format!("Could not get current time: {err}"),
+                    })?
+                    .as_secs();
+                let mut str = String::from("<!DOCTYPE NETSCAPE-Bookmark-file-1>");
+                str.push_str("\n<!--This is an automatically generated file.");
+                str.push_str("\n    It will be read and overwritten.");
+                str.push_str("\n    Do Not Edit! -->");
+                str.push_str("\n<Title>Bookmarks</Title>");
+                str.push_str("\n<H1>Bookmarks</H1>");
+                str.push_str("\n<DL><p>");
+                self.state.iter().for_each(|(parent, links)| {
+                    // Create parent folder and add links as bookmarks
+                    str.push_str(format!("\n  <DT><H3 ADD_DATE=\"{curr_time}\" LAST_MODIFIED=\"0\">{parent}</H3>").as_str());
+                    str.push_str("\n    <DL><p>");
+                    links.iter().for_each(|(link, value)| {
+                        str.push_str(format!("\n      <DT><A HREF=\"{value}\" ADD_DATE=\"{curr_time}\" LAST_MODIFIED=\"0\">{link}</A>").as_str());
+                    });
+                    str.push_str("\n    </DL><p>");
+                });
+                str.push_str("\n</DL><p>");
+                fs::write(&dest, &str).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileCreateFailed,
+                    message: format!(
+                        "Could not create Chrome export file to {}: {e}",
+                        dest.display()
+                    ),
+                })?;
+            }
             ImportExportType::Tap => {
+                if dest.is_dir() {
+                    dest = dest.join("export.tap")
+                }
+                validate_path(&ImportExportType::Tap, &dest)?;
                 fs::copy(&self.path, &dest).map_err(|e| TapDataStoreError {
                     kind: TapDataStoreErrorKind::FileCreateFailed,
                     message: format!(
@@ -1587,21 +1629,37 @@ fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
 /// Checks if the file extension is valid for the import file type
 fn validate_path(file_type: &ImportExportType, path: &Path) -> Result<(), TapDataStoreError> {
     match file_type {
+        ImportExportType::Browser => {
+            let extension = path.extension().ok_or(TapDataStoreError {
+                kind: TapDataStoreErrorKind::InvalidFileExtension,
+                message: format!(
+                    "Unable to get file extension for browser file: {}",
+                    path.display()
+                ),
+            })?;
+            if extension != "html" {
+                Err(TapDataStoreError {
+                    kind: TapDataStoreErrorKind::InvalidFileExtension,
+                    message: format!(
+                        "Invalid file extension for browser file: {}",
+                        path.display()
+                    ),
+                })?;
+            }
+            Ok(())
+        }
         ImportExportType::Tap => {
             let extension = path.extension().ok_or(TapDataStoreError {
                 kind: TapDataStoreErrorKind::InvalidFileExtension,
                 message: format!(
-                    "Unable to get file extension for tap import file: {}",
+                    "Unable to get file extension for tap file: {}",
                     path.display()
                 ),
             })?;
             if extension != "tap" {
                 Err(TapDataStoreError {
                     kind: TapDataStoreErrorKind::InvalidFileExtension,
-                    message: format!(
-                        "Invalid file extension for tap import file: {}",
-                        path.display()
-                    ),
+                    message: format!("Invalid file extension for tap file: {}", path.display()),
                 })?;
             }
             Ok(())
@@ -1618,6 +1676,7 @@ enum FileType {
 }
 
 pub enum ImportExportType {
+    Browser,
     Tap,
 }
 
@@ -1733,6 +1792,7 @@ pub enum TapDataStoreErrorKind {
     ParentEntityNotFound,
     ParseError,
     ReservedKeyword,
+    OSError,
 }
 
 #[derive(Debug)]
@@ -1774,6 +1834,7 @@ impl fmt::Display for TapDataStoreErrorKind {
             TapDataStoreErrorKind::ParentEntityNotFound => write!(f, "Parent entity not found"),
             TapDataStoreErrorKind::ParseError => write!(f, "Parse error"),
             TapDataStoreErrorKind::ReservedKeyword => write!(f, "Reserved keyword used"),
+            TapDataStoreErrorKind::OSError => write!(f, "OS error"),
         }
     }
 }

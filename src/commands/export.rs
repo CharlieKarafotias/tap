@@ -24,8 +24,10 @@ impl Default for Export {
 }
 
 impl Export {
-    fn bad_browser_message(&self, browser: &str) -> String {
-        format!("unknown browser \"{browser}\", see the Usage section with tap --export --help")
+    fn invalid_export_type_message(&self, export_type: &str) -> String {
+        format!(
+            "unknown export type \"{export_type}\", see the Usage section with tap --export --help"
+        )
     }
 }
 
@@ -36,9 +38,10 @@ impl Command for Export {
 
     fn help_message(&self) -> String {
         format!(
-            "Tap export exports all links from Tap to a bookmark file compatible with the following browsers:\n{}\n\nExample Usage: {}",
-            "Chrome, Edge, Firefox, Opera, Safari, Tap",
-            "tap --export <Chrome | Edge | Firefox | Opera | Safari | Tap> <destination folder>"
+            "Tap export exports all links from Tap to 1 of 2 options:\n\n  - {}\n  - {}\n\nExample Usage: {}",
+            "A tap file",
+            "A browser html bookmark file",
+            "tap --export <Browser | Tap> <destination folder>"
         )
     }
 
@@ -53,21 +56,15 @@ impl Command for Export {
                 }
             }
             2 => match (args[0].as_str(), args[1].as_str()) {
-                ("Chrome", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement export functionality to Chrome: {f}"
-                ))),
-                ("Edge", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement export functionality to Edge: {f}"
-                ))),
-                ("Firefox", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement export functionality to Firefox: {f}"
-                ))),
-                ("Opera", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement export functionality to Opera: {f}"
-                ))),
-                ("Safari", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement export functionality to Safari: {f}"
-                ))),
+                ("Browser", f) => {
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    let path_to_export = ds
+                        .export(PathBuf::from(f), ImportExportType::Browser)
+                        .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value(format!(
+                        "Successfully exported Bookmarks file to: {path_to_export}\nTo import into browser, use the \"Bookmark HTML file\" import type."
+                    )))
+                }
                 ("Tap", f) => {
                     let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
                     let path_to_export = ds
@@ -77,7 +74,7 @@ impl Command for Export {
                         "Successfully exported Tap file to: {path_to_export}"
                     )))
                 }
-                (bad_browser, _) => Err(self.bad_browser_message(bad_browser)),
+                (bad_browser, _) => Err(self.invalid_export_type_message(bad_browser)),
             },
             _ => Err(self.error_message()),
         }
@@ -126,79 +123,30 @@ mod tests {
     fn test_export_run_bad_browser() {
         let args: Vec<String> = vec!["bad browser".to_string(), "path".to_string()];
         let cmd = Export::default();
-        let expected: Result<CommandResult, String> = Err(cmd.bad_browser_message("bad browser"));
+        let expected: Result<CommandResult, String> =
+            Err(cmd.invalid_export_type_message("bad browser"));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 
     #[test]
-    fn test_export_run_chrome() {
+    fn test_export_run_browser() {
         let cmd = Export::default();
-        let args = vec!["Chrome", "./test.json"]
+        let args = vec!["Browser", "test.html"]
             .iter()
             .map(|s| s.to_string())
             .collect();
         let expected = CommandResult::Value(
-            "TODO: Implement export functionality to Chrome: ./test.json".to_string(),
+            "Successfully exported Bookmarks file to: test.html\nTo import into browser, use the \"Bookmark HTML file\" import type.".to_string(),
         );
         let res = cmd.run(args).expect("Could not display export");
         assert_eq!(res, expected);
-    }
 
-    #[test]
-    fn test_export_run_edge() {
-        let cmd = Export::default();
-        let args = vec!["Edge", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement export functionality to Edge: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display export");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_export_run_firefox() {
-        let cmd = Export::default();
-        let args = vec!["Firefox", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement export functionality to Firefox: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display export");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_export_run_opera() {
-        let cmd = Export::default();
-        let args = vec!["Opera", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement export functionality to Opera: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display export");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_export_run_safari() {
-        let cmd = Export::default();
-        let args = vec!["Safari", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement export functionality to Safari: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display export");
-        assert_eq!(res, expected);
+        // Clean up
+        let path = Path::new("test.html");
+        if path.exists() {
+            fs::remove_file(path).expect("Could not remove test.html");
+        }
     }
 
     #[test]

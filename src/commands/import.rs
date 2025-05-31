@@ -22,8 +22,10 @@ impl Default for Import {
 }
 
 impl Import {
-    fn bad_browser_message(&self, browser: &str) -> String {
-        format!("unknown browser \"{browser}\", see the Usage section with tap --import --help")
+    fn bad_type_message(&self, import_type: &str) -> String {
+        format!(
+            "unknown import type \"{import_type}\", see the Usage section with tap --import --help"
+        )
     }
 }
 
@@ -34,9 +36,8 @@ impl Command for Import {
 
     fn help_message(&self) -> String {
         format!(
-            "Tap import imports a bookmark file from one of the following browsers into Tap. Import will overwrite existing links:\n{}\n\nExample Usage: {}",
-            "Chrome, Edge, Firefox, Opera, Safari, Tap",
-            "tap --import <Chrome | Edge | Firefox | Opera | Safari | Tap> <bookmark file>"
+            "Tap import imports a browser bookmark file into Tap. Import will overwrite existing links.\n\nExample Usage: {}",
+            "tap --import <Browser | Tap> <bookmark file>"
         )
     }
 
@@ -51,20 +52,8 @@ impl Command for Import {
                 }
             }
             2 => match (args[0].as_str(), args[1].as_str()) {
-                ("Chrome", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement import functionality from Chrome: {f}"
-                ))),
-                ("Edge", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement import functionality from Edge: {f}"
-                ))),
-                ("Firefox", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement import functionality from Firefox: {f}"
-                ))),
-                ("Opera", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement import functionality from Opera: {f}"
-                ))),
-                ("Safari", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement import functionality from Safari: {f}"
+                ("Browser", f) => Ok(CommandResult::Value(format!(
+                    "TODO: Implement import functionality from Browser: {f}"
                 ))),
                 ("Tap", f) => {
                     let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
@@ -72,7 +61,7 @@ impl Command for Import {
                         .map_err(|e| e.to_string())?;
                     Ok(CommandResult::Value("Import complete".to_string()))
                 }
-                (bad_browser, _) => Err(self.bad_browser_message(bad_browser)),
+                (bad_type, _) => Err(self.bad_type_message(bad_type)),
             },
             _ => Err(self.error_message()),
         }
@@ -119,76 +108,20 @@ mod tests {
     fn test_import_run_bad_browser() {
         let args: Vec<String> = vec!["bad browser".to_string(), "path".to_string()];
         let cmd = Import::default();
-        let expected: Result<CommandResult, String> = Err(cmd.bad_browser_message("bad browser"));
+        let expected: Result<CommandResult, String> = Err(cmd.bad_type_message("bad browser"));
         let res = cmd.run(args);
         assert_eq!(res, expected);
     }
 
     #[test]
-    fn test_import_run_chrome() {
+    fn test_import_run_browser() {
         let cmd = Import::default();
-        let args = vec!["Chrome", "./test.json"]
+        let args = vec!["Browser", "test.html"]
             .iter()
             .map(|s| s.to_string())
             .collect();
         let expected = CommandResult::Value(
-            "TODO: Implement import functionality from Chrome: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display import");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_import_run_edge() {
-        let cmd = Import::default();
-        let args = vec!["Edge", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement import functionality from Edge: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display import");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_import_run_firefox() {
-        let cmd = Import::default();
-        let args = vec!["Firefox", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement import functionality from Firefox: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display import");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_import_run_opera() {
-        let cmd = Import::default();
-        let args = vec!["Opera", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement import functionality from Opera: ./test.json".to_string(),
-        );
-        let res = cmd.run(args).expect("Could not display import");
-        assert_eq!(res, expected);
-    }
-
-    #[test]
-    fn test_import_run_safari() {
-        let cmd = Import::default();
-        let args = vec!["Safari", "./test.json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement import functionality from Safari: ./test.json".to_string(),
+            "TODO: Implement import functionality from Browser: test.html".to_string(),
         );
         let res = cmd.run(args).expect("Could not display import");
         assert_eq!(res, expected);
