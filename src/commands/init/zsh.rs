@@ -136,3 +136,21 @@ pub(super) fn update_zshrc() -> Result<(), InitError> {
     add_completions_to_site_functions()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zshrc_path_is_correct() {
+        assert_eq!(zshrc_path().unwrap(), home_path().unwrap().join(".zshrc"));
+    }
+
+    #[test]
+    fn test_completions_path_is_correct() {
+        assert_eq!(
+            completions_path().unwrap(),
+            home_path().unwrap().join(".zsh")
+        );
+    }
+}
