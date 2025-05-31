@@ -43,9 +43,20 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 ## Phase 6: Bulk Import and Export Support
 
 - [ ] Implement import functionality from browser bookmark files (Chrome, Edge, Firefox, Opera, Safari)
-- [x] Implement bulk import functionality using Tap format
+  - [ ] Chrome
+  - [ ] Edge
+  - [ ] Firefox
+  - [ ] Opera
+  - [ ] Safari
+  - [x] Tap
 - [x] Implement validation to ensure imported data follows correct schema
 - [ ] Implement export functionality to generate browser-compatible bookmark files
+  - [ ] Chrome
+  - [ ] Edge
+  - [ ] Firefox
+  - [ ] Opera
+  - [ ] Safari
+  - [ ] Tap
 - [ ] Write tests for import/export features
 
 ## Phase 7: Multi-OS Support
