@@ -37,6 +37,7 @@ fn fpath_has_zsh_completions(zshrc_path: &Path) -> Result<bool, InitError> {
             format!("Unable to read ~/.zshrc: {e}"),
         )
     })?;
+    // TODO: adjust completion path to ~/.zsh/ instead of ~/.zsh/completions
     let completions_path = zshrc_path
         .parent()
         .unwrap_or(Path::new(""))
@@ -56,6 +57,8 @@ fn fpath_has_zsh_completions(zshrc_path: &Path) -> Result<bool, InitError> {
 /// - If the ~/.zshrc file cannot be read, an InitError of kind ReadFailed will be returned
 fn add_fpath_and_autocompletions_if_not_exists(zshrc_path: &Path) -> Result<(), InitError> {
     println!("Adding fpath and auto-completions to ~/.zshrc if needed");
+    // TODO: adjust completion path to ~/.zsh/ instead of ~/.zsh/completions
+    // TODO: should this be added to top or bottom? Right now it's added to the top
     let completions_path = zshrc_path
         .parent()
         .unwrap_or(Path::new(""))
@@ -128,6 +131,7 @@ pub(super) fn update_zshrc() -> Result<(), InitError> {
 
     create_if_not_exists(zshrc_path.as_path())?;
     add_fpath_and_autocompletions_if_not_exists(zshrc_path.as_path())?;
+    // TODO: adjust completion path to ~/.zsh/ instead of ~/.zsh/completions
     add_completions_to_site_functions(
         Path::new(&home_path)
             .join(".zsh")

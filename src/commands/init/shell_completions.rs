@@ -1,5 +1,28 @@
 pub(super) const ZSH_COMPLETION: &str = r#"#compdef tap
 
+# zsh completion wrapper for tap
+#
+# The recommended way to install this script is to make a copy of it as a file named '_tap'
+# in a directory in your $fpath. For example:
+#
+#   mkdir -p ~/.zsh/
+#   tap init zsh > ~/.zsh/_tap
+#
+# Then add the following line to your ~/.zshrc file:
+#
+#   fpath=(~/.zsh/ $fpath)
+#
+# You will also need to add the following line to your ~/.zshrc file:
+#
+#   autoload -Uz compinit && compinit
+#
+# For more information, see:
+# https://zsh.sourceforge.io/Doc/Release/Completion-System.html#Initialization
+#
+# Alternatively, you can run the following tap command to automatically setup shell completions:
+#
+#   tap init --auto
+
 # Fetch parent entities dynamically by running `tap -s`. Then:
 # - skip the first line
 # - remove leading and trailing whitespace
@@ -91,20 +114,17 @@ case $state in
             _values 'Links' $selected_links
         fi
     ;;
-esac
-
-case $state in
     commandargs)
-    local command=$words[2]
-    local subcommand=$words[3]
-    if [[ $command == "--import" || $command == "--export" ]]; then
-            _files
-    fi
-    if [[ $command == "-d" || $command == "--delete" || $command == "-s" || $command == "--show" || $command == "-u" || $command == "--upsert" ]]; then
-        local selected_links
-        selected_links=($(tap -s $subcommand | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'))
-        _values 'Links' $selected_links
-    fi
+        local command=$words[2]
+        local subcommand=$words[3]
+        if [[ $command == "--import" || $command == "--export" ]]; then
+                _files
+        fi
+        if [[ $command == "-d" || $command == "--delete" || $command == "-s" || $command == "--show" || $command == "-u" || $command == "--upsert" ]]; then
+            local selected_links
+            selected_links=($(tap -s $subcommand | tail -n +2 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d'))
+            _values 'Links' $selected_links
+        fi
     ;;
 esac
 "#;
