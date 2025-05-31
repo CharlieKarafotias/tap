@@ -37,12 +37,13 @@ impl Command for Export {
     }
 
     fn help_message(&self) -> String {
-        format!(
-            "Tap export exports all links from Tap to 1 of 2 options:\n\n  - {}\n  - {}\n\nExample Usage: {}",
-            "A tap file",
-            "A browser html bookmark file",
-            "tap --export <Browser | Tap> <destination folder>"
-        )
+        let mut str = String::new();
+        str.push_str("Tap export exports all links from Tap to 1 of 2 options:\n");
+        str.push_str("  - Browser\n");
+        str.push_str("  - Tap\n\n");
+        str.push_str("Example Usage: \n");
+        str.push_str("  tap --export <Browser | Tap> <destination folder>");
+        str
     }
 
     fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
