@@ -56,7 +56,7 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
   - [ ] Firefox
   - [ ] Opera
   - [ ] Safari
-  - [ ] Tap
+  - [x] Tap
 - [ ] Write tests for import/export features
 
 ## Phase 7: Multi-OS Support

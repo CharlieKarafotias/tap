@@ -1,7 +1,11 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        tap_data_store::{DataStore, ImportExportType},
+    },
 };
+use std::path::PathBuf;
 
 pub(crate) struct Export {
     name: String,
@@ -64,9 +68,15 @@ impl Command for Export {
                 ("Safari", f) => Ok(CommandResult::Value(format!(
                     "TODO: Implement export functionality to Safari: {f}"
                 ))),
-                ("Tap", f) => Ok(CommandResult::Value(format!(
-                    "TODO: Implement export functionality to Tap: {f}"
-                ))),
+                ("Tap", f) => {
+                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                    let path_to_export = ds
+                        .export(PathBuf::from(f), ImportExportType::Tap)
+                        .map_err(|e| e.to_string())?;
+                    Ok(CommandResult::Value(format!(
+                        "Successfully exported Tap file to: {path_to_export}"
+                    )))
+                }
                 (bad_browser, _) => Err(self.bad_browser_message(bad_browser)),
             },
             _ => Err(self.error_message()),
@@ -91,6 +101,8 @@ impl DisplayCommandAsRow for Export {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn test_export_run_expected_help_arg() {
@@ -192,14 +204,19 @@ mod tests {
     #[test]
     fn test_export_run_tap() {
         let cmd = Export::default();
-        let args = vec!["Tap", "./test.tap"]
+        let args = vec!["Tap", "test.tap"]
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let expected = CommandResult::Value(
-            "TODO: Implement export functionality to Tap: ./test.tap".to_string(),
-        );
+        let expected =
+            CommandResult::Value("Successfully exported Tap file to: test.tap".to_string());
         let res = cmd.run(args).expect("Could not display export");
         assert_eq!(res, expected);
+
+        // Clean up
+        let path = Path::new("test.tap");
+        if path.exists() {
+            fs::remove_file(path).expect("Could not remove test.tap");
+        }
     }
 }
