@@ -115,13 +115,21 @@ impl DataStore {
     pub fn import(
         &mut self,
         path: PathBuf,
-        import_type: ImportType,
+        import_type: ImportExportType,
     ) -> Result<(), TapDataStoreError> {
         self.data.import(import_type, path.clone())?;
         let index_offsets = self.data.save_to_file()?;
         self.index.update(index_offsets);
         self.index.save_to_file()?;
         Ok(())
+    }
+
+    pub fn export(
+        &mut self,
+        dest: PathBuf,
+        export_type: ImportExportType,
+    ) -> Result<String, TapDataStoreError> {
+        self.data.export(dest, export_type)
     }
 }
 
@@ -333,7 +341,7 @@ impl Data {
 
     pub fn import(
         &mut self,
-        file_type: ImportType,
+        file_type: ImportExportType,
         path: PathBuf,
     ) -> Result<(), TapDataStoreError> {
         validate_path(&file_type, &path)?;
@@ -348,7 +356,7 @@ impl Data {
             });
         }
         match file_type {
-            ImportType::Tap => {
+            ImportExportType::Tap => {
                 let file_as_str = fs::read_to_string(&path).map_err(|e| TapDataStoreError {
                     kind: TapDataStoreErrorKind::FileReadFailed,
                     message: format!("Could not read data file at {}: {e}", path.display()),
@@ -362,14 +370,37 @@ impl Data {
                 });
             }
         }
-
         Ok(())
+    }
+
+    pub fn export(
+        &self,
+        mut dest: PathBuf,
+        file_type: ImportExportType,
+    ) -> Result<String, TapDataStoreError> {
+        if dest.is_dir() {
+            dest = dest.join("export.tap")
+        }
+
+        // copy datastore file to dest if tap
+        match file_type {
+            ImportExportType::Tap => {
+                fs::copy(&self.path, &dest).map_err(|e| TapDataStoreError {
+                    kind: TapDataStoreErrorKind::FileCreateFailed,
+                    message: format!(
+                        "Could not create Tap export file to {}: {e}",
+                        dest.display()
+                    ),
+                })?;
+            }
+        }
+        Ok(dest.display().to_string())
     }
 }
 
 #[cfg(test)]
 mod data_public {
-    use super::{Data, FileType, ImportType, TapDataStoreErrorKind, get_test_file_path};
+    use super::{Data, FileType, ImportExportType, TapDataStoreErrorKind, get_test_file_path};
     use std::fs;
     use std::path::PathBuf;
 
@@ -620,7 +651,7 @@ mod data_public {
         let import_path = "rando_file.pdf";
         let data_path = get_test_file_path(FileType::Data).expect("Could not get test file path");
         let mut data = Data::new(Some(data_path), None).unwrap();
-        let res = data.import(ImportType::Tap, PathBuf::from(import_path));
+        let res = data.import(ImportExportType::Tap, PathBuf::from(import_path));
         assert_eq!(
             res.unwrap_err().kind,
             TapDataStoreErrorKind::InvalidFileExtension
@@ -639,7 +670,7 @@ mod data_public {
         )];
         fs::write(&import_path, "search-engines->\nyahoo|www.yahoo.com\n").unwrap();
 
-        let res = data.import(ImportType::Tap, import_path.clone());
+        let res = data.import(ImportExportType::Tap, import_path.clone());
         assert!(res.is_ok());
         assert_eq!(
             data.state,
@@ -666,7 +697,7 @@ mod data_public {
         )];
         fs::write(&import_path, "repo->\ngh|www.github.com\n").unwrap();
 
-        let res = data.import(ImportType::Tap, import_path.clone());
+        let res = data.import(ImportExportType::Tap, import_path.clone());
         assert!(res.is_ok());
         assert_eq!(
             data.state,
@@ -696,7 +727,7 @@ mod data_public {
         )];
         fs::write(&import_path, "search-engines->\ngoogle|abc\n").unwrap();
 
-        let res = data.import(ImportType::Tap, import_path.clone());
+        let res = data.import(ImportExportType::Tap, import_path.clone());
         // TODO: currently the link is overwritten, make this a param instead?
         assert!(res.is_ok());
         assert_eq!(
@@ -1554,9 +1585,9 @@ fn validate_link(link: &str) -> Result<(), TapDataStoreError> {
 }
 
 /// Checks if the file extension is valid for the import file type
-fn validate_path(file_type: &ImportType, path: &Path) -> Result<(), TapDataStoreError> {
+fn validate_path(file_type: &ImportExportType, path: &Path) -> Result<(), TapDataStoreError> {
     match file_type {
-        ImportType::Tap => {
+        ImportExportType::Tap => {
             let extension = path.extension().ok_or(TapDataStoreError {
                 kind: TapDataStoreErrorKind::InvalidFileExtension,
                 message: format!(
@@ -1586,7 +1617,7 @@ enum FileType {
     Tap,
 }
 
-pub enum ImportType {
+pub enum ImportExportType {
     Tap,
 }
 

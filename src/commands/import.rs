@@ -1,7 +1,7 @@
 use crate::{
     commands::{Command, CommandResult},
     utils::cli_usage_table::DisplayCommandAsRow,
-    utils::tap_data_store::{DataStore, ImportType},
+    utils::tap_data_store::{DataStore, ImportExportType},
 };
 use std::path::PathBuf;
 
@@ -68,7 +68,7 @@ impl Command for Import {
                 ))),
                 ("Tap", f) => {
                     let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    ds.import(PathBuf::from(f), ImportType::Tap)
+                    ds.import(PathBuf::from(f), ImportExportType::Tap)
                         .map_err(|e| e.to_string())?;
                     Ok(CommandResult::Value("Import complete".to_string()))
                 }
