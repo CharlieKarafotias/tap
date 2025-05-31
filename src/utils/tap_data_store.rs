@@ -384,7 +384,6 @@ impl Data {
         // copy datastore file to dest if tap
         match file_type {
             ImportExportType::Browser => {
-                // TODO: test edge
                 if dest.is_dir() {
                     dest = dest.join("bookmarks.html")
                 }
