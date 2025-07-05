@@ -96,7 +96,8 @@ It most likely won't! The only way reserved words will affect you is if you atte
 
 ### Underlying Data Storage
 
-Tap uses its own data storage format for parent entities and links. This data store is split into 2 files.
+Tap uses its own data storage format for parent entities and links. This data store is split into 2 files. Each
+file is stored in the appropriate directory according to the standards of the OS tap is run on ([XDG Base Directory Specification](https://specifications.freedesktop.org/basedir-spec/latest) for Linux, [File System Basics](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/FileSystemOverview/FileSystemOverview.html#//apple_ref/doc/uid/TP40010672-CH2-SW28) for MacOS, and []() for Windows)
 - `.tap_data`: This file contains all the parent entities and their associated links.
 - `.tap_index`: This file contains the parent entities, their offsets and lengths for fast reads (measured in bytes).
 
