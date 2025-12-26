@@ -33,14 +33,7 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 - [ ] Bash auto-completion
 - [ ] Write tests for auto-completion behavior
 
-## Phase 5: Interactive Terminal UI (TUI)
-
-- [ ] Implement basic interactive TUI interface for entity and link management
-- [ ] Add support for listing and selecting entities
-- [ ] Add support for adding, updating, and deleting links via TUI
-- [ ] Write tests for TUI functionality
-
-## Phase 6: Bulk Import and Export Support
+## Phase 5: Bulk Import and Export Support
 
 - [ ] Implement import functionality from browser bookmark files (Chrome, Edge, Firefox, Opera, Safari)
   - [ ] Chrome
@@ -59,7 +52,7 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
   - [x] Tap
 - [ ] Write tests for import/export features
 
-## Phase 7: Multi-OS Support
+## Phase 6: Multi-OS Support
 
 - [x] Implement macOs support
 - [x] Implement Linux support
@@ -68,13 +61,7 @@ Tap is a Rust-based CLI tool that provides quick access to links and resources a
 - [ ] Test on Linux
 - [ ] Test on Windows
 
-## Phase 8: Built-in Updater
-
-- [ ] Implement `tap update` command to check for and apply updates
-- [ ] Ensure proper versioning strategy for updates
-- [ ] Write tests for update functionality
-
-## Phase 9: Final Testing and Optimization
+## Phase 7: Final Testing and Optimization
 
 - [ ] Conduct full integration testing
 - [ ] Optimize database queries and CLI performance
