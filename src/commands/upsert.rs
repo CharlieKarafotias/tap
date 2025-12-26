@@ -40,43 +40,43 @@ impl Command for Upsert {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            1 => {
-                if args[0] == "--help" {
-                    Ok(CommandResult::Value(self.help_message()))
-                } else {
-                    Err(self.error_message())
-                }
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let arg1 = args.next();
+        let arg2 = args.next();
+        let arg3 = args.next();
+        let arg4 = args.next();
+        match (
+            arg1.as_deref(),
+            arg2.as_deref(),
+            arg3.as_deref(),
+            arg4.as_deref(),
+        ) {
+            (Some("--help"), None, None, None) => Ok(CommandResult::Value(self.help_message())),
+            (Some("here"), Some(link_name), Some(value), None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let current_dir_name = get_current_directory_name().map_err(|e| e.to_string())?;
+                ds.upsert_link(
+                    current_dir_name.to_string(),
+                    link_name.to_string(),
+                    value.to_string(),
+                )
+                .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully upserted {link_name} with value {value} to parent entity {current_dir_name}"
+                )))
             }
-            3 => match (args[0].as_str(), args[1].as_str(), args[2].as_str()) {
-                ("here", link_name, value) => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    let current_dir_name =
-                        get_current_directory_name().map_err(|e| e.to_string())?;
-                    ds.upsert_link(
-                        current_dir_name.to_string(),
-                        link_name.to_string(),
-                        value.to_string(),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully upserted {link_name} with value {value} to parent entity {current_dir_name}"
-                    )))
-                }
-                (parent_entity, link_name, value) => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    ds.upsert_link(
-                        parent_entity.to_string(),
-                        link_name.to_string(),
-                        value.to_string(),
-                    )
-                    .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully upserted {link_name} with value {value} to parent entity {parent_entity}"
-                    )))
-                }
-            },
+            (Some(parent_entity), Some(link_name), Some(value), None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                ds.upsert_link(
+                    parent_entity.to_string(),
+                    link_name.to_string(),
+                    value.to_string(),
+                )
+                .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully upserted {link_name} with value {value} to parent entity {parent_entity}"
+                )))
+            }
             _ => Err(self.error_message()),
         }
     }
@@ -102,7 +102,7 @@ mod tests {
 
     #[test]
     fn test_upsert_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Upsert::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_upsert_run_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string()];
+        let args = vec!["random".to_string()].into_iter();
         let cmd = Upsert::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -120,11 +120,12 @@ mod tests {
 
     #[test]
     fn test_upsert_run_expected_three_args_here() {
-        let args: Vec<String> = vec![
+        let args = vec![
             "here".to_string(),
             "google".to_string(),
             "https://google.com".to_string(),
-        ];
+        ]
+        .into_iter();
         let current_dir = std::env::current_dir().unwrap();
         let current_dir_name = current_dir.file_name().unwrap().to_str().unwrap();
         let cmd = Upsert::default();
@@ -137,11 +138,12 @@ mod tests {
 
     #[test]
     fn test_upsert_run_expected_three_args_parent_entity() {
-        let args: Vec<String> = vec![
+        let args = vec![
             "search-engines".to_string(),
             "google".to_string(),
             "https://google.com".to_string(),
-        ];
+        ]
+        .into_iter();
         let cmd = Upsert::default();
         let expected: Result<CommandResult, String> =
             Ok(CommandResult::Value("Successfully upserted google with value https://google.com to parent entity search-engines".to_string()));

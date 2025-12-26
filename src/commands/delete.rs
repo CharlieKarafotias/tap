@@ -37,49 +37,47 @@ impl Command for Delete {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            1 => match args[0].as_str() {
-                "--help" => Ok(CommandResult::Value(self.help_message())),
-                "here" => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    let current_dir_name =
-                        get_current_directory_name().map_err(|e| e.to_string())?;
-                    ds.delete(current_dir_name.to_string(), None)
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully removed all links of parent '{current_dir_name}'"
-                    )))
-                }
-                parent_entity => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    ds.delete(parent_entity.to_string(), None)
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully removed all links of parent '{parent_entity}'"
-                    )))
-                }
-            },
-            2 => match (args[0].as_str(), args[1].as_str()) {
-                ("here", link_name) => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    let current_dir_name =
-                        get_current_directory_name().map_err(|e| e.to_string())?;
-                    ds.delete(current_dir_name.to_string(), Some(link_name.to_string()))
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully removed link '{link_name}' from parent '{current_dir_name}'"
-                    )))
-                }
-                (parent_entity, link_name) => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    ds.delete(parent_entity.to_string(), Some(link_name.to_string()))
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully removed link '{link_name}' from parent '{parent_entity}'"
-                    )))
-                }
-            },
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let arg1 = args.next();
+        let arg2 = args.next();
+        let arg3 = args.next();
+
+        match (arg1.as_deref(), arg2.as_deref(), arg3.as_deref()) {
+            (Some("--help"), None, None) => Ok(CommandResult::Value(self.help_message())),
+            (Some("here"), None, None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let current_dir_name = get_current_directory_name().map_err(|e| e.to_string())?;
+                ds.delete(current_dir_name.to_string(), None)
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully removed all links of parent '{current_dir_name}'"
+                )))
+            }
+            (Some(parent_entity), None, None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                ds.delete(parent_entity.to_string(), None)
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully removed all links of parent '{parent_entity}'"
+                )))
+            }
+            (Some("here"), Some(link_name), None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let current_dir_name = get_current_directory_name().map_err(|e| e.to_string())?;
+                ds.delete(current_dir_name.to_string(), Some(link_name.to_string()))
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully removed link '{link_name}' from parent '{current_dir_name}'"
+                )))
+            }
+            (Some(parent_entity), Some(link_name), None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                ds.delete(parent_entity.to_string(), Some(link_name.to_string()))
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully removed link '{link_name}' from parent '{parent_entity}'"
+                )))
+            }
             _ => Err(self.error_message()),
         }
     }
@@ -105,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_delete_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Delete::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -114,11 +112,12 @@ mod tests {
 
     #[test]
     fn test_delete_run_unexpected_args() {
-        let args: Vec<String> = vec![
+        let args = vec![
             "random".to_string(),
             "random2".to_string(),
             "random3".to_string(),
-        ];
+        ]
+        .into_iter();
         let cmd = Delete::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -129,7 +128,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency"]
     fn test_delete_run_expected_here_arg() {
-        let args: Vec<String> = vec!["here".to_string()];
+        let args = vec!["here".to_string()].into_iter();
         let current_dir = std::env::current_dir().unwrap();
         let current_dir_name = current_dir.file_name().unwrap().to_str().unwrap();
         let cmd = Delete::default();
@@ -144,7 +143,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency"]
     fn test_delete_run_expected_here_and_link_args() {
-        let args: Vec<String> = vec!["here".to_string(), "google".to_string()];
+        let args = vec!["here".to_string(), "google".to_string()].into_iter();
         let current_dir = std::env::current_dir().unwrap();
         let current_dir_name = current_dir.file_name().unwrap().to_str().unwrap();
         let cmd = Delete::default();
@@ -159,7 +158,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency"]
     fn test_delete_run_expected_parent_entity_arg() {
-        let args: Vec<String> = vec!["search-engines".to_string()];
+        let args = vec!["search-engines".to_string()].into_iter();
         let cmd = Delete::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "Successfully removed all links of parent 'search-engines'".to_string(),
@@ -172,7 +171,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency"]
     fn test_delete_run_expected_parent_entity_and_link_args() {
-        let args: Vec<String> = vec!["search-engines".to_string(), "google".to_string()];
+        let args = vec!["search-engines".to_string(), "google".to_string()].into_iter();
         let cmd = Delete::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "Successfully removed link 'google' from parent 'search-engines'".to_string(),

@@ -31,16 +31,10 @@ impl Command for Version {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            0 => Ok(CommandResult::Value(display_version())),
-            1 => {
-                if args[0] == "--help" {
-                    Ok(CommandResult::Value(self.help_message()))
-                } else {
-                    Err(self.error_message())
-                }
-            }
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        match args.next().as_deref() {
+            None => Ok(CommandResult::Value(display_version())),
+            Some("--help") => Ok(CommandResult::Value(self.help_message())),
             _ => Err(self.error_message()),
         }
     }
@@ -66,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_version_run_expected_args() {
-        let args: Vec<String> = vec![];
+        let args = vec![].into_iter();
         let cmd = Version::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(display_version()));
         let res = cmd.run(args);
@@ -75,7 +69,7 @@ mod tests {
 
     #[test]
     fn test_version_run_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Version::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -84,7 +78,7 @@ mod tests {
 
     #[test]
     fn test_version_run_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string()];
+        let args = vec!["random".to_string()].into_iter();
         let cmd = Version::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);

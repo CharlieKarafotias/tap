@@ -53,28 +53,28 @@ impl Command for Init {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            1 => {
-                match args[0].as_str() {
-                    "zsh" => Ok(CommandResult::Value(
-                        shell_completions::ZSH_COMPLETION.to_string(),
-                    )),
-                    "auto" => {
-                        match determine_user_shell() {
-                            Ok(Shell::Zsh) => update_zshrc().map_err(|e| e.to_string()),
-                            Ok(Shell::NotSupported) => Err("tap does not support your shell, please use zsh for shell completions".to_string()),
-                            Err(e) => Err(e.to_string()),
-                        }?;
-                        Ok(CommandResult::Value(
-                            "Updated shell completions, restart your shell for changes to take effect"
-                                .to_string(),
-                        ))
-                    }
-                    "--help" => Ok(CommandResult::Value(self.help_message())),
-                    _ => Err(self.error_message()),
-                }
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let arg1 = args.next();
+
+        match arg1.as_deref() {
+            Some("zsh") => Ok(CommandResult::Value(
+                shell_completions::ZSH_COMPLETION.to_string(),
+            )),
+            Some("auto") => {
+                match determine_user_shell() {
+                    Ok(Shell::Zsh) => update_zshrc().map_err(|e| e.to_string()),
+                    Ok(Shell::NotSupported) => Err(
+                        "tap does not support your shell, please use zsh for shell completions"
+                            .to_string(),
+                    ),
+                    Err(e) => Err(e.to_string()),
+                }?;
+                Ok(CommandResult::Value(
+                    "Updated shell completions, restart your shell for changes to take effect"
+                        .to_string(),
+                ))
             }
+            Some("--help") => Ok(CommandResult::Value(self.help_message())),
             _ => Err(self.error_message()),
         }
     }
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_init_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Init::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_init_run_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string()];
+        let args = vec!["random".to_string()].into_iter();
         let cmd = Init::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);

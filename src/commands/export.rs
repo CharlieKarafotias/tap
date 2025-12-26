@@ -46,37 +46,34 @@ impl Command for Export {
         str
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            0 => Err(self.error_message()),
-            1 => {
-                if args[0] == "--help" {
-                    Ok(CommandResult::Value(self.help_message()))
-                } else {
-                    Err(self.error_message())
-                }
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let arg1 = args.next();
+        let arg2 = args.next();
+        let arg3 = args.next();
+
+        match (arg1.as_deref(), arg2.as_deref(), arg3.as_deref()) {
+            (Some("--help"), None, None) => Ok(CommandResult::Value(self.help_message())),
+            (Some("Browser"), Some(f), None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let path_to_export = ds
+                    .export(PathBuf::from(f), ImportExportType::Browser)
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully exported Bookmarks file to: {path_to_export}\nTo import into browser, use the \"Bookmark HTML file\" import type."
+                )))
             }
-            2 => match (args[0].as_str(), args[1].as_str()) {
-                ("Browser", f) => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    let path_to_export = ds
-                        .export(PathBuf::from(f), ImportExportType::Browser)
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully exported Bookmarks file to: {path_to_export}\nTo import into browser, use the \"Bookmark HTML file\" import type."
-                    )))
-                }
-                ("Tap", f) => {
-                    let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
-                    let path_to_export = ds
-                        .export(PathBuf::from(f), ImportExportType::Tap)
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "Successfully exported Tap file to: {path_to_export}"
-                    )))
-                }
-                (bad_browser, _) => Err(self.invalid_export_type_message(bad_browser)),
-            },
+            (Some("Tap"), Some(f), None) => {
+                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let path_to_export = ds
+                    .export(PathBuf::from(f), ImportExportType::Tap)
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "Successfully exported Tap file to: {path_to_export}"
+                )))
+            }
+            (Some(bad_browser), Some(_), None) => {
+                Err(self.invalid_export_type_message(bad_browser))
+            }
             _ => Err(self.error_message()),
         }
     }
@@ -104,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_export_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Export::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -113,7 +110,7 @@ mod tests {
 
     #[test]
     fn test_export_run_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string()];
+        let args = vec!["random".to_string()].into_iter();
         let cmd = Export::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -122,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_export_run_bad_browser() {
-        let args: Vec<String> = vec!["bad browser".to_string(), "path".to_string()];
+        let args = vec!["bad browser".to_string(), "path".to_string()].into_iter();
         let cmd = Export::default();
         let expected: Result<CommandResult, String> =
             Err(cmd.invalid_export_type_message("bad browser"));
@@ -133,10 +130,7 @@ mod tests {
     #[test]
     fn test_export_run_browser() {
         let cmd = Export::default();
-        let args = vec!["Browser", "test.html"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let args = vec!["Browser".to_string(), "test.html".to_string()].into_iter();
         let expected = CommandResult::Value(
             "Successfully exported Bookmarks file to: test.html\nTo import into browser, use the \"Bookmark HTML file\" import type.".to_string(),
         );
@@ -153,10 +147,7 @@ mod tests {
     #[test]
     fn test_export_run_tap() {
         let cmd = Export::default();
-        let args = vec!["Tap", "test.tap"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let args = vec!["Tap".to_string(), "test.tap".to_string()].into_iter();
         let expected =
             CommandResult::Value("Successfully exported Tap file to: test.tap".to_string());
         let res = cmd.run(args).expect("Could not display export");

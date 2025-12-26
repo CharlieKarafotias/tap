@@ -33,8 +33,8 @@ impl Command for Help {
         )
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        if !args.is_empty() {
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        if args.next().is_some() {
             Err(self.error_message())
         } else {
             Ok(CommandResult::Value(self.help_message()))
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_help_unexpected_args() {
-        let args = vec!["--help".to_string(), "me".to_string()];
+        let args = vec!["--help".to_string(), "me".to_string()].into_iter();
         let cmd = Help::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_help_run() {
-        let args = vec![];
+        let args = vec![].into_iter();
         let cmd = Help::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);

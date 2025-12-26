@@ -10,8 +10,6 @@ pub(crate) mod import;
 pub(crate) mod init;
 pub(crate) mod parent_entity;
 pub(crate) mod show;
-pub(crate) mod tui;
-pub(crate) mod update;
 pub(crate) mod upsert;
 pub(crate) mod version;
 
@@ -31,7 +29,7 @@ impl Display for CommandResult {
 pub trait Command {
     fn error_message(&self) -> String;
     fn help_message(&self) -> String;
-    fn run(&self, parsed_args: Vec<String>) -> Result<CommandResult, String>;
+    fn run<I: Iterator<Item = String>>(&self, parsed_args: I) -> Result<CommandResult, String>;
 }
 
 // Utility Messages used across commands
@@ -56,8 +54,6 @@ pub(in crate::commands) fn display_commands() -> String {
                 Row::new(init::Init::default()),
                 Row::new(import::Import::default()),
                 Row::new(export::Export::default()),
-                Row::new(tui::Tui::default()),
-                Row::new(update::Update::default()),
                 // Other Commands:
                 Row::new(help::Help::default()),
                 Row::new(version::Version::default()),

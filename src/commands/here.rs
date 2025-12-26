@@ -37,9 +37,12 @@ impl Command for Here {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            0 => {
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let arg1 = args.next();
+        let arg2 = args.next();
+
+        match (arg1.as_deref(), arg2.as_deref()) {
+            (None, None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
                 let ds =
                     ReadDataStore::new(None, parent_entity.clone()).map_err(|e| e.to_string())?;
@@ -52,19 +55,17 @@ impl Command for Here {
                 res_str.push(']');
                 Ok(CommandResult::Value(res_str))
             }
-            1 => match args[0].as_str() {
-                "--help" => Ok(CommandResult::Value(self.help_message())),
-                link => {
-                    let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                    let ds = ReadDataStore::new(None, parent_entity.to_string())
-                        .map_err(|e| e.to_string())?;
-                    let (_, val) = ds
-                        .read_link(&parent_entity, link)
-                        .map_err(|e| e.to_string())?;
-                    open_link(&val).map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value("Opening link...".to_string()))
-                }
-            },
+            (Some("--help"), None) => Ok(CommandResult::Value(self.help_message())),
+            (Some(link), None) => {
+                let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
+                let ds = ReadDataStore::new(None, parent_entity.to_string())
+                    .map_err(|e| e.to_string())?;
+                let (_, val) = ds
+                    .read_link(&parent_entity, link)
+                    .map_err(|e| e.to_string())?;
+                open_link(&val).map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value("Opening link...".to_string()))
+            }
             _ => Err(self.error_message()),
         }
     }
@@ -90,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_here_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Here::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -99,7 +100,7 @@ mod tests {
 
     #[test]
     fn test_here_run_unexpected_args() {
-        let args: Vec<String> = vec!["random".to_string(), "random2".to_string()];
+        let args = vec!["random".to_string(), "random2".to_string()].into_iter();
         let cmd = Here::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -109,7 +110,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_here_run_all_links() {
-        let args: Vec<String> = vec![];
+        let args = vec![].into_iter();
         let cmd = Here::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement here functionality".to_string(),
@@ -121,7 +122,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_here_run_specific_link() {
-        let args: Vec<String> = vec!["google".to_string()];
+        let args = vec!["google".to_string()].into_iter();
         let cmd = Here::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement open functionality for here with Link Name google".to_string(),

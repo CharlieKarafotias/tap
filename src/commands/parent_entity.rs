@@ -36,13 +36,16 @@ impl Command for ParentEntity {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            1 => {
-                let parent_entity = args[0].as_str();
-                let ds = ReadDataStore::new(None, parent_entity.to_string())
-                    .map_err(|e| e.to_string())?;
-                let res = ds.read_parent(parent_entity).map_err(|e| e.to_string())?;
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let parent_entity = args.next();
+        let link = args.next();
+        let more_than_2_args = args.next();
+
+        match (parent_entity, link, more_than_2_args) {
+            (Some(parent), None, None) => {
+                // TODO: change this to accept &str instead of copying string here
+                let ds = ReadDataStore::new(None, parent.to_string()).map_err(|e| e.to_string())?;
+                let res = ds.read_parent(&parent).map_err(|e| e.to_string())?;
                 let mut res_str = "Opening links: [".to_string();
                 for (link, val) in res.iter() {
                     open_link(val).map_err(|e| e.to_string())?;
@@ -51,7 +54,7 @@ impl Command for ParentEntity {
                 res_str.push(']');
                 Ok(CommandResult::Value(res_str))
             }
-            2 => match (args[0].as_str(), args[1].as_str()) {
+            (Some(parent), Some(link), None) => match (parent.as_str(), link.as_str()) {
                 ("--parent-entity", "--help") => Ok(CommandResult::Value(self.help_message())),
                 (parent_entity, link) => {
                     let ds = ReadDataStore::new(None, parent_entity.to_string())
@@ -88,7 +91,7 @@ mod tests {
 
     #[test]
     fn test_parent_entity_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--parent-entity".to_string(), "--help".to_string()];
+        let args = vec!["--parent-entity".to_string(), "--help".to_string()].into_iter();
         let cmd = ParentEntity::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -97,11 +100,12 @@ mod tests {
 
     #[test]
     fn test_parent_entity_run_unexpected_args() {
-        let args: Vec<String> = vec![
+        let args = vec![
             "random".to_string(),
             "random2".to_string(),
             "random3".to_string(),
-        ];
+        ]
+        .into_iter();
         let cmd = ParentEntity::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -111,7 +115,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_parent_entity_run_all_links() {
-        let args: Vec<String> = vec!["search-engine".to_string()];
+        let args = vec!["search-engine".to_string()].into_iter();
         let cmd = ParentEntity::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement open functionality for Parent Entity: search-engine".to_string(),
@@ -123,7 +127,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should be an integration test due to DataStore dependency & os dependency"]
     fn test_parent_entity_run_specific_link() {
-        let args: Vec<String> = vec!["search-engine".to_string(), "google".to_string()];
+        let args = vec!["search-engine".to_string(), "google".to_string()].into_iter();
         let cmd = ParentEntity::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value("TODO: Implement open functionality for Parent Entity search-engine with Link Name google".to_string()));
         let res = cmd.run(args);

@@ -41,9 +41,13 @@ impl Command for Show {
         s
     }
 
-    fn run(&self, args: Vec<String>) -> Result<CommandResult, String> {
-        match args.len() {
-            0 => {
+    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+        let arg1 = args.next();
+        let arg2 = args.next();
+        let arg3 = args.next();
+
+        match (arg1.as_deref(), arg2.as_deref(), arg3.as_deref()) {
+            (None, None, None) => {
                 // Use Index parents
                 let index = Index::new(None).unwrap();
                 let parents = index.parents();
@@ -53,55 +57,52 @@ impl Command for Show {
                     parent_entities.trim_end_matches('\n')
                 )))
             }
-            1 => match args[0].as_str() {
-                "--help" => Ok(CommandResult::Value(self.help_message())),
-                "here" => {
-                    let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                    let ds = ReadDataStore::new(None, parent_entity.to_string())
-                        .map_err(|e| e.to_string())?;
-                    let links = ds.links(&parent_entity).map_err(|e| e.to_string())?;
-                    let links_string: String = links.iter().map(|s| format!("  {s}\n")).collect();
-                    Ok(CommandResult::Value(format!(
-                        "Links of parent entity {parent_entity}:\n{}",
-                        links_string.trim_end_matches('\n')
-                    )))
-                }
-                parent_entity => {
-                    let ds = ReadDataStore::new(None, parent_entity.to_string())
-                        .map_err(|e| e.to_string())?;
-                    let links = ds.links(parent_entity).map_err(|e| e.to_string())?;
-                    let links_string: String = links.iter().map(|s| format!("  {s}\n")).collect();
-                    Ok(CommandResult::Value(format!(
-                        "Links of parent entity {parent_entity}:\n{}",
-                        links_string.trim_end_matches('\n')
-                    )))
-                }
-            },
-            2 => match (args[0].as_str(), args[1].as_str()) {
-                ("here", link_name) => {
-                    let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                    let ds = ReadDataStore::new(None, parent_entity.to_string())
-                        .map_err(|e| e.to_string())?;
-                    let link_value = ds
-                        .read_link(&parent_entity, link_name)
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "{}: {}",
-                        link_value.0, link_value.1
-                    )))
-                }
-                (parent_entity, link_name) => {
-                    let ds = ReadDataStore::new(None, parent_entity.to_string())
-                        .map_err(|e| e.to_string())?;
-                    let link_value = ds
-                        .read_link(parent_entity, link_name)
-                        .map_err(|e| e.to_string())?;
-                    Ok(CommandResult::Value(format!(
-                        "{}: {}",
-                        link_value.0, link_value.1
-                    )))
-                }
-            },
+            (Some("--help"), None, None) => Ok(CommandResult::Value(self.help_message())),
+            (Some("here"), None, None) => {
+                let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
+                let ds = ReadDataStore::new(None, parent_entity.to_string())
+                    .map_err(|e| e.to_string())?;
+                let links = ds.links(&parent_entity).map_err(|e| e.to_string())?;
+                let links_string: String = links.iter().map(|s| format!("  {s}\n")).collect();
+                Ok(CommandResult::Value(format!(
+                    "Links of parent entity {parent_entity}:\n{}",
+                    links_string.trim_end_matches('\n')
+                )))
+            }
+            (Some(parent_entity), None, None) => {
+                let ds = ReadDataStore::new(None, parent_entity.to_string())
+                    .map_err(|e| e.to_string())?;
+                let links = ds.links(parent_entity).map_err(|e| e.to_string())?;
+                let links_string: String = links.iter().map(|s| format!("  {s}\n")).collect();
+                Ok(CommandResult::Value(format!(
+                    "Links of parent entity {parent_entity}:\n{}",
+                    links_string.trim_end_matches('\n')
+                )))
+            }
+            (Some("here"), Some(link_name), None) => {
+                let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
+                let ds = ReadDataStore::new(None, parent_entity.to_string())
+                    .map_err(|e| e.to_string())?;
+                let link_value = ds
+                    .read_link(&parent_entity, link_name)
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "{}: {}",
+                    link_value.0, link_value.1
+                )))
+            }
+
+            (Some(parent_entity), Some(link_name), None) => {
+                let ds = ReadDataStore::new(None, parent_entity.to_string())
+                    .map_err(|e| e.to_string())?;
+                let link_value = ds
+                    .read_link(parent_entity, link_name)
+                    .map_err(|e| e.to_string())?;
+                Ok(CommandResult::Value(format!(
+                    "{}: {}",
+                    link_value.0, link_value.1
+                )))
+            }
             _ => Err(self.error_message()),
         }
     }
@@ -127,7 +128,7 @@ mod tests {
 
     #[test]
     fn test_show_run_expected_help_arg() {
-        let args: Vec<String> = vec!["--help".to_string()];
+        let args = vec!["--help".to_string()].into_iter();
         let cmd = Show::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
         let res = cmd.run(args);
@@ -136,11 +137,12 @@ mod tests {
 
     #[test]
     fn test_show_run_unexpected_args() {
-        let args: Vec<String> = vec![
+        let args = vec![
             "random".to_string(),
             "random2".to_string(),
             "random3".to_string(),
-        ];
+        ]
+        .into_iter();
         let cmd = Show::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
         let res = cmd.run(args);
@@ -150,7 +152,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_show_run_expected_here_arg() {
-        let args: Vec<String> = vec!["here".to_string()];
+        let args = vec!["here".to_string()].into_iter();
         let cmd = Show::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement show functionality for here".to_string(),
@@ -162,7 +164,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_show_run_expected_here_and_link_args() {
-        let args: Vec<String> = vec!["here".to_string(), "google".to_string()];
+        let args = vec!["here".to_string(), "google".to_string()].into_iter();
         let cmd = Show::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement show functionality for here with Link Name google".to_string(),
@@ -174,7 +176,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_show_run_expected_parent_entity_arg() {
-        let args: Vec<String> = vec!["search-engines".to_string()];
+        let args = vec!["search-engines".to_string()].into_iter();
         let cmd = Show::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement show functionality for Parent Entity: search-engines".to_string(),
@@ -186,7 +188,7 @@ mod tests {
     #[test]
     #[ignore = "GH-45: Should really be an integration test - move this out"]
     fn test_show_run_expected_parent_entity_and_link_args() {
-        let args: Vec<String> = vec!["search-engines".to_string(), "google".to_string()];
+        let args = vec!["search-engines".to_string(), "google".to_string()].into_iter();
         let cmd = Show::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(
             "TODO: Implement show functionality for Parent Entity search-engines with Link Name google".to_string()

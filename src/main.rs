@@ -2,18 +2,21 @@ mod cli;
 mod commands;
 mod utils;
 
-use cli::{collect_args, run};
+use cli::run;
+use std::process::exit;
 
 fn main() {
-    let args = collect_args();
+    let mut args = std::env::args();
+    // NOTE: consume the executable path
+    args.next();
     match run(args) {
         Ok(res) => {
             println!("{}", res);
-            std::process::exit(0);
+            exit(0);
         }
         Err(e) => {
-            println!("ERROR: {}", e);
-            std::process::exit(1);
+            eprintln!("ERROR: {}", e);
+            exit(1);
         }
     }
 }
