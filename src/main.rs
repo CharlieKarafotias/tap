@@ -6,7 +6,7 @@ use cli::run;
 use std::process::exit;
 
 fn main() {
-    let mut args = std::env::args();
+    let mut args = std::env::args().peekable();
     // NOTE: consume the executable path
     args.next();
     match run(args) {

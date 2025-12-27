@@ -1,4 +1,5 @@
 use std::env::Args;
+use std::iter::Peekable;
 
 use crate::commands::{Command, CommandResult};
 use crate::commands::{
@@ -6,25 +7,33 @@ use crate::commands::{
     parent_entity::ParentEntity, show::Show, upsert::Upsert, version::Version,
 };
 
-pub fn run(mut args: Args) -> Result<CommandResult, String> {
-    match args.next() {
-        None => Help::default().run(args),
-        Some(command) => match command.as_str() {
-            // General:
-            "--help" => Help::default().run(args),
-            "-v" | "--version" => Version::default().run(args),
-            // Utilities:
-            "-i" | "--init" => Init::default().run(args),
-            "--import" => Import::default().run(args),
-            "--export" => Export::default().run(args),
-            // Adding, Updating, and Deleting Links:
-            "-a" | "--add" => Add::default().run(args),
-            "-d" | "--delete" => Delete::default().run(args),
-            "-s" | "--show" => Show::default().run(args),
-            "-u" | "--upsert" => Upsert::default().run(args),
-            // Opening links:
-            "here" => Here::default().run(args),
-            _parent_entity => ParentEntity::default().run(args),
-        },
+fn dispatch<C>(mut args: Peekable<Args>) -> Result<CommandResult, String>
+where
+    C: Command + Default,
+{
+    if C::consumes_arg() {
+        args.next();
+    }
+    C::default().run(args)
+}
+
+pub fn run(mut args: Peekable<Args>) -> Result<CommandResult, String> {
+    match args.peek().map(String::as_str) {
+        None => dispatch::<Help>(args),
+        // General:
+        Some("--help") => dispatch::<Help>(args),
+        Some("-v") | Some("--version") => dispatch::<Version>(args),
+        // Utilities:
+        Some("-i") | Some("--init") => dispatch::<Init>(args),
+        Some("--import") => dispatch::<Import>(args),
+        Some("--export") => dispatch::<Export>(args),
+        // Adding, Updating, and Deleting Links:
+        Some("-a") | Some("--add") => dispatch::<Add>(args),
+        Some("-d") | Some("--delete") => dispatch::<Delete>(args),
+        Some("-s") | Some("--show") => dispatch::<Show>(args),
+        Some("-u") | Some("--upsert") => dispatch::<Upsert>(args),
+        // Opening links:
+        Some("here") => dispatch::<Here>(args),
+        Some(_parent_entity) => dispatch::<ParentEntity>(args),
     }
 }

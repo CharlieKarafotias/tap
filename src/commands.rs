@@ -27,6 +27,9 @@ impl Display for CommandResult {
 }
 
 pub trait Command {
+    fn consumes_arg() -> bool {
+        true
+    }
     fn error_message(&self) -> String;
     fn help_message(&self) -> String;
     fn run<I: Iterator<Item = String>>(&self, parsed_args: I) -> Result<CommandResult, String>;

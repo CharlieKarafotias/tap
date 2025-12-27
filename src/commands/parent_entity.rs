@@ -22,6 +22,10 @@ impl Default for ParentEntity {
 }
 
 impl Command for ParentEntity {
+    fn consumes_arg() -> bool {
+        false
+    }
+
     fn error_message(&self) -> String {
         "expected 1-2 arguments, see the Usage section with tap --parent-entity --help".to_string()
     }
