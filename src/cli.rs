@@ -1,11 +1,28 @@
-use std::env::Args;
-use std::iter::Peekable;
-
-use crate::commands::{Command, CommandResult};
-use crate::commands::{
-    add::Add, delete::Delete, export::Export, help::Help, here::Here, import::Import, init::Init,
-    parent_entity::ParentEntity, show::Show, upsert::Upsert, version::Version,
+use std::{
+    env::Args,
+    io::{Write, stderr, stdout},
+    iter::Peekable,
 };
+
+use super::commands::{
+    Command, CommandResult, add::Add, delete::Delete, export::Export, help::Help, here::Here,
+    import::Import, init::Init, parent_entity::ParentEntity, show::Show, upsert::Upsert,
+    version::Version,
+};
+
+struct Context<WOut: Write, WErr: Write> {
+    writer_out: WOut,
+    writer_err: WErr,
+}
+
+impl<WOut: Write, WErr: Write> Context<WOut, WErr> {
+    fn new(w_out: WOut, w_err: WErr) -> Self {
+        Context {
+            writer_out: w_out,
+            writer_err: w_err,
+        }
+    }
+}
 
 fn dispatch<C>(mut args: Peekable<Args>) -> Result<CommandResult, String>
 where
@@ -17,7 +34,7 @@ where
     C::default().run(args)
 }
 
-pub fn run(mut args: Peekable<Args>) -> Result<CommandResult, String> {
+fn run(mut args: Peekable<Args>) -> Result<CommandResult, String> {
     match args.peek().map(String::as_str) {
         None => dispatch::<Help>(args),
         // General:
@@ -35,5 +52,26 @@ pub fn run(mut args: Peekable<Args>) -> Result<CommandResult, String> {
         // Opening links:
         Some("here") => dispatch::<Here>(args),
         Some(_parent_entity) => dispatch::<ParentEntity>(args),
+    }
+}
+
+/// Wrapper around CLI to setup production experience
+/// - Uses stdout and stderr
+/// - Setup arguments for run function call by removing first arg (executable path)
+pub(super) fn run_with_stdio() -> i32 {
+    let mut ctx = Context::new(stdout(), stderr());
+    let mut args = std::env::args().peekable();
+    // NOTE: consume the executable path
+    args.next();
+
+    match run(args) {
+        Ok(res) => {
+            writeln!(ctx.writer_out, "{}", res);
+            0
+        }
+        Err(e) => {
+            writeln!(ctx.writer_err, "ERROR: {}", e);
+            1
+        }
     }
 }

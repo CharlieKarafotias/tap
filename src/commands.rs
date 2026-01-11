@@ -1,20 +1,20 @@
 use super::utils::cli_usage_table::{Row, UsageTableBuilder};
 use std::fmt::{Display, Formatter};
 
-pub(crate) mod add;
-pub(crate) mod delete;
-pub(crate) mod export;
-pub(crate) mod help;
-pub(crate) mod here;
-pub(crate) mod import;
-pub(crate) mod init;
-pub(crate) mod parent_entity;
-pub(crate) mod show;
-pub(crate) mod upsert;
-pub(crate) mod version;
+pub(super) mod add;
+pub(super) mod delete;
+pub(super) mod export;
+pub(super) mod help;
+pub(super) mod here;
+pub(super) mod import;
+pub(super) mod init;
+pub(super) mod parent_entity;
+pub(super) mod show;
+pub(super) mod upsert;
+pub(super) mod version;
 
 #[derive(Debug, PartialEq)]
-pub enum CommandResult {
+pub(super) enum CommandResult {
     Value(String),
 }
 
@@ -26,7 +26,7 @@ impl Display for CommandResult {
     }
 }
 
-pub trait Command {
+pub(super) trait Command {
     fn consumes_arg() -> bool {
         true
     }
@@ -36,11 +36,11 @@ pub trait Command {
 }
 
 // Utility Messages used across commands
-pub(in crate::commands) fn display_version() -> String {
+pub(in super::commands) fn display_version() -> String {
     format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
 }
 
-pub(in crate::commands) fn display_commands() -> String {
+pub(in super::commands) fn display_commands() -> String {
     let res = UsageTableBuilder::new("Usage:")
         .add_section(
             "Commands:",

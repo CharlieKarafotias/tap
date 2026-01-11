@@ -1,4 +1,60 @@
-use std::{env::consts::OS, fmt, process::Command};
+use std::{
+    env::{consts::OS, var},
+    fmt,
+    path::PathBuf,
+    process::Command,
+};
+
+pub fn derive_data_local_dir_by_os(
+    qualifier: &str,
+    organization: &str,
+    application: &str,
+) -> Result<PathBuf, OsImplementationError> {
+    match OS {
+        "linux" => {
+            // TODO: improvement to ensure absolute path (what happens if one of these is
+            // relative?)
+            if let Some(data_home) = var("XDG_DATA_HOME").ok() {
+                return Ok(PathBuf::from(format!("{data_home}/{application}")));
+            }
+            if let Some(home) = var("HOME").ok() {
+                return Ok(PathBuf::from(format!("{home}/.local/share/{application}")));
+            }
+            // TODO: could be derived with sys calls instead of forcing user to set ENV var
+            Err(OsImplementationError {
+                kind: OsImplementationErrorKind::MissingEnvVar,
+                message: "Both environment variable $XDG_DATA_HOME and $HOME were not found"
+                    .to_string(),
+            })
+        }
+        "macos" => {
+            if let Some(home) = var("HOME").ok() {
+                return Ok(PathBuf::from(format!(
+                    "{home}/Library/Application Support/{qualifier}.{organization}.{application}"
+                )));
+            }
+            Err(OsImplementationError {
+                kind: OsImplementationErrorKind::MissingEnvVar,
+                message: "The environment variable $HOME was not found".to_string(),
+            })
+        }
+        "windows" => {
+            if let Some(local_app_data) = var("LOCALAPPDATA").ok() {
+                return Ok(PathBuf::from(format!(
+                    "{local_app_data}\\{organization}\\{application}\\data"
+                )));
+            }
+            Err(OsImplementationError {
+                kind: OsImplementationErrorKind::MissingEnvVar,
+                message: "The environment variable %LOCALAPPDATA% was not found".to_string(),
+            })
+        }
+        os => Err(OsImplementationError {
+            kind: OsImplementationErrorKind::OsNotSupported,
+            message: format!("Unsupported OS: {}", os),
+        }),
+    }
+}
 
 pub fn open_link(link: &str) -> Result<(), OsImplementationError> {
     let mut cmd = match OS {
@@ -45,6 +101,7 @@ pub fn open_link(link: &str) -> Result<(), OsImplementationError> {
 pub enum OsImplementationErrorKind {
     CommandFailedToStart,
     CommandNotRunning,
+    MissingEnvVar,
     OsNotSupported,
 }
 
@@ -56,7 +113,7 @@ pub struct OsImplementationError {
 
 impl fmt::Display for OsImplementationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} (command util error: {})", self.message, self.kind)
+        write!(f, "{} (util error: {})", self.message, self.kind)
     }
 }
 
@@ -65,6 +122,9 @@ impl fmt::Display for OsImplementationErrorKind {
         match self {
             OsImplementationErrorKind::CommandFailedToStart => write!(f, "Command failed to start"),
             OsImplementationErrorKind::CommandNotRunning => write!(f, "Command not running"),
+            OsImplementationErrorKind::MissingEnvVar => {
+                write!(f, "Required environment variable missing")
+            }
             OsImplementationErrorKind::OsNotSupported => write!(f, "OS not supported"),
         }
     }

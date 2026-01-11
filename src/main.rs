@@ -2,21 +2,10 @@ mod cli;
 mod commands;
 mod utils;
 
-use cli::run;
+use cli::run_with_stdio;
 use std::process::exit;
 
 fn main() {
-    let mut args = std::env::args().peekable();
-    // NOTE: consume the executable path
-    args.next();
-    match run(args) {
-        Ok(res) => {
-            println!("{}", res);
-            exit(0);
-        }
-        Err(e) => {
-            eprintln!("ERROR: {}", e);
-            exit(1);
-        }
-    }
+    let exit_code = run_with_stdio();
+    exit(exit_code)
 }
