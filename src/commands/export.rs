@@ -2,7 +2,7 @@ use crate::{
     commands::{Command, CommandResult},
     utils::{
         cli_usage_table::DisplayCommandAsRow,
-        tap_data_store::{DataStore, ImportExportType},
+        datastore::{DS, Datastore, ImportExportType},
     },
 };
 use std::path::PathBuf;
@@ -54,7 +54,7 @@ impl Command for Export {
         match (arg1.as_deref(), arg2.as_deref(), arg3.as_deref()) {
             (Some("--help"), None, None) => Ok(CommandResult::Value(self.help_message())),
             (Some("Browser"), Some(f), None) => {
-                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let path_to_export = ds
                     .export(PathBuf::from(f), ImportExportType::Browser)
                     .map_err(|e| e.to_string())?;
@@ -63,7 +63,7 @@ impl Command for Export {
                 )))
             }
             (Some("Tap"), Some(f), None) => {
-                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let path_to_export = ds
                     .export(PathBuf::from(f), ImportExportType::Tap)
                     .map_err(|e| e.to_string())?;

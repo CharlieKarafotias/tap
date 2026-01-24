@@ -1,8 +1,10 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
-    utils::command::get_current_directory_name,
-    utils::tap_data_store::DataStore,
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        command::get_current_directory_name,
+        datastore::{DS, Datastore},
+    },
 };
 
 pub(crate) struct Add {
@@ -54,7 +56,7 @@ impl Command for Add {
         ) {
             (Some("--help"), None, None, None) => Ok(CommandResult::Value(self.help_message())),
             (Some("here"), Some(link_name), Some(value), None) => {
-                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let current_dir_name = get_current_directory_name().map_err(|e| e.to_string())?;
                 ds.add_link(
                     current_dir_name.to_string(),
@@ -67,7 +69,7 @@ impl Command for Add {
                 )))
             }
             (Some(parent_entity), Some(link_name), Some(value), None) => {
-                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 ds.add_link(
                     parent_entity.to_string(),
                     link_name.to_string(),

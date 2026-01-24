@@ -1,7 +1,9 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
-    utils::tap_data_store::{DataStore, ImportExportType},
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        datastore::{DS, Datastore, ImportExportType},
+    },
 };
 use std::path::PathBuf;
 
@@ -52,7 +54,7 @@ impl Command for Import {
                 "TODO: Implement import functionality from Browser: {f}"
             ))),
             (Some("Tap"), Some(f), None) => {
-                let mut ds = DataStore::new(None).map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 ds.import(PathBuf::from(f), ImportExportType::Tap)
                     .map_err(|e| e.to_string())?;
                 Ok(CommandResult::Value("Import complete".to_string()))

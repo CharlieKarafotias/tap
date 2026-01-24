@@ -6,16 +6,101 @@ use index::Index;
 use std::{
     fmt::{self},
     fs,
-    io::{Read, Write},
+    io::{Read, Seek, Write},
+    path::PathBuf,
 };
 
-struct Datastore<RW: Read + Write> {
+pub enum ImportExportType {
+    Browser,
+    Tap,
+}
+type LinkValue = (String, String);
+pub trait DS {
+    fn add_link(
+        &mut self,
+        parent_entity: String,
+        link_name: String,
+        value: String,
+    ) -> Result<(), DataStoreError>;
+    fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError>;
+    fn import(
+        &mut self,
+        path: PathBuf,
+        import_type: ImportExportType,
+    ) -> Result<(), DataStoreError>;
+    fn export(
+        &mut self,
+        path: PathBuf,
+        export_type: ImportExportType,
+    ) -> Result<String, DataStoreError>;
+    fn read_parent(&self, parent_entity: &str) -> Result<Vec<LinkValue>, DataStoreError>;
+    fn read_link(&self, parent_entity: &str, link: &str) -> Result<LinkValue, DataStoreError>;
+    fn parents(&self) -> Result<Vec<String>, DataStoreError>;
+    fn upsert_link(
+        &mut self,
+        parent_entity: String,
+        link_name: String,
+        value: String,
+    ) -> Result<(), DataStoreError>;
+}
+
+pub struct Datastore<RW: Read + Write + Seek> {
     // d: Data<RW>,
     i: Index<RW>,
 }
 
+impl<RW: Read + Write + Seek> DS for Datastore<RW> {
+    fn add_link(
+        &mut self,
+        parent_entity: String,
+        link_name: String,
+        value: String,
+    ) -> Result<(), DataStoreError> {
+        todo!()
+    }
+
+    fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError> {
+        todo!()
+    }
+
+    fn export(
+        &mut self,
+        path: PathBuf,
+        export_type: ImportExportType,
+    ) -> Result<String, DataStoreError> {
+        todo!()
+    }
+
+    fn import(
+        &mut self,
+        path: PathBuf,
+        import_type: ImportExportType,
+    ) -> Result<(), DataStoreError> {
+        todo!()
+    }
+
+    fn read_parent(&self, parent_entity: &str) -> Result<Vec<LinkValue>, DataStoreError> {
+        todo!()
+    }
+
+    fn read_link(&self, parent_entity: &str, link: &str) -> Result<LinkValue, DataStoreError> {
+        todo!()
+    }
+    fn parents(&self) -> Result<Vec<String>, DataStoreError> {
+        todo!()
+    }
+    fn upsert_link(
+        &mut self,
+        parent_entity: String,
+        link_name: String,
+        value: String,
+    ) -> Result<(), DataStoreError> {
+        todo!()
+    }
+}
+
 impl Datastore<fs::File> {
-    fn new() -> Result<Self, DataStoreError> {
+    pub fn new() -> Result<Self, DataStoreError> {
         let path = derive_data_local_dir_by_os("dev", "CharlieKarafotias", "Tap").map_err(|e| {
             DataStoreError {
                 kind: DataStoreErrorKind::OS,
@@ -57,7 +142,7 @@ impl Datastore<fs::File> {
 }
 
 #[cfg(test)]
-impl<RW: Read + Write> Datastore<RW> {
+impl<RW: Read + Write + Seek> Datastore<RW> {
     fn new_in_memory(index: RW) -> Self {
         Datastore {
             i: Index::new(index),

@@ -1,8 +1,10 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
-    utils::os_implementations::open_link,
-    utils::tap_data_store::ReadDataStore,
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        datastore::{DS, Datastore},
+        os_implementations::open_link,
+    },
 };
 
 pub(crate) struct ParentEntity {
@@ -47,8 +49,7 @@ impl Command for ParentEntity {
 
         match (parent_entity, link, more_than_2_args) {
             (Some(parent), None, None) => {
-                // TODO: change this to accept &str instead of copying string here
-                let ds = ReadDataStore::new(None, parent.to_string()).map_err(|e| e.to_string())?;
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
                 let res = ds.read_parent(&parent).map_err(|e| e.to_string())?;
                 let mut res_str = "Opening links: [".to_string();
                 for (link, val) in res.iter() {
@@ -61,8 +62,7 @@ impl Command for ParentEntity {
             (Some(parent), Some(link), None) => match (parent.as_str(), link.as_str()) {
                 ("--parent-entity", "--help") => Ok(CommandResult::Value(self.help_message())),
                 (parent_entity, link) => {
-                    let ds = ReadDataStore::new(None, parent_entity.to_string())
-                        .map_err(|e| e.to_string())?;
+                    let ds = Datastore::new().map_err(|e| e.to_string())?;
                     let (_, val) = ds
                         .read_link(parent_entity, link)
                         .map_err(|e| e.to_string())?;

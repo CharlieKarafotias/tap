@@ -1,10 +1,11 @@
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
-    utils::command::get_current_directory_name,
-    utils::tap_data_store::{Index, ReadDataStore},
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        command::get_current_directory_name,
+        datastore::{DS, Datastore},
+    },
 };
-
 pub(crate) struct Show {
     name: String,
     description: String,
@@ -48,9 +49,8 @@ impl Command for Show {
 
         match (arg1.as_deref(), arg2.as_deref(), arg3.as_deref()) {
             (None, None, None) => {
-                // Use Index parents
-                let index = Index::new(None).unwrap();
-                let parents = index.parents();
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let parents = ds.parents().map_err(|e| e.to_string())?;
                 let parent_entities: String = parents.iter().map(|s| format!("  {s}\n")).collect();
                 Ok(CommandResult::Value(format!(
                     "Parent Entities:\n{}",
@@ -60,20 +60,24 @@ impl Command for Show {
             (Some("--help"), None, None) => Ok(CommandResult::Value(self.help_message())),
             (Some("here"), None, None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                let ds = ReadDataStore::new(None, parent_entity.to_string())
-                    .map_err(|e| e.to_string())?;
-                let links = ds.links(&parent_entity).map_err(|e| e.to_string())?;
-                let links_string: String = links.iter().map(|s| format!("  {s}\n")).collect();
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let links = ds.read_parent(&parent_entity).map_err(|e| e.to_string())?;
+                let links_string: String = links
+                    .iter()
+                    .map(|(_parent, link)| format!("  {link}\n"))
+                    .collect();
                 Ok(CommandResult::Value(format!(
                     "Links of parent entity {parent_entity}:\n{}",
                     links_string.trim_end_matches('\n')
                 )))
             }
             (Some(parent_entity), None, None) => {
-                let ds = ReadDataStore::new(None, parent_entity.to_string())
-                    .map_err(|e| e.to_string())?;
-                let links = ds.links(parent_entity).map_err(|e| e.to_string())?;
-                let links_string: String = links.iter().map(|s| format!("  {s}\n")).collect();
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let links = ds.read_parent(&parent_entity).map_err(|e| e.to_string())?;
+                let links_string: String = links
+                    .iter()
+                    .map(|(_parent, link)| format!("  {link}\n"))
+                    .collect();
                 Ok(CommandResult::Value(format!(
                     "Links of parent entity {parent_entity}:\n{}",
                     links_string.trim_end_matches('\n')
@@ -81,8 +85,7 @@ impl Command for Show {
             }
             (Some("here"), Some(link_name), None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                let ds = ReadDataStore::new(None, parent_entity.to_string())
-                    .map_err(|e| e.to_string())?;
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
                 let link_value = ds
                     .read_link(&parent_entity, link_name)
                     .map_err(|e| e.to_string())?;
@@ -93,8 +96,7 @@ impl Command for Show {
             }
 
             (Some(parent_entity), Some(link_name), None) => {
-                let ds = ReadDataStore::new(None, parent_entity.to_string())
-                    .map_err(|e| e.to_string())?;
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
                 let link_value = ds
                     .read_link(parent_entity, link_name)
                     .map_err(|e| e.to_string())?;

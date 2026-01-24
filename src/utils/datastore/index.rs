@@ -8,6 +8,7 @@ use std::{
 /// Format: parent_entity, latest_byte_offset, length, generation
 type Idx = (String, usize, usize, usize);
 
+#[derive(Debug, PartialEq)]
 enum IndexType {
     Entry(Idx),
     Tombstone(String),
@@ -245,7 +246,7 @@ impl<RW: Read + Write + Seek> Index<RW> {
     ///     - `Read`: the read operation of the Index file failed
     ///     - `Parse`: parsing of an Index entry in the Index file failed suggesting the Index file
     ///                is corrupted
-    fn idx_parents(&mut self) -> Result<HashSet<String>, IndexError> {
+    pub fn idx_parents(&mut self) -> Result<HashSet<String>, IndexError> {
         let mut reader = BufReader::new(&mut self.buf);
         reader.seek(SeekFrom::Start(0)).map_err(|e| IndexError {
             kind: IndexErrorKind::Read,
@@ -273,12 +274,17 @@ impl<RW: Read + Write + Seek> Index<RW> {
 fn parse_line(line: &str) -> Result<IndexType, IndexError> {
     // line like -parent_entity is a tombstone
     if line.starts_with('-') && !line.contains('|') {
-        let parent: &str = line.splitn(2, '-').next().take().ok_or(IndexError {
-            kind: IndexErrorKind::Parse,
-            message: format!("Expected a parent entity to follow '-' but received line {line}"),
-        })?;
+        let parent = line
+            .strip_prefix('-')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or(IndexError {
+                kind: IndexErrorKind::Parse,
+                message: format!("Expected a parent entity to follow '-' but received line {line}"),
+            })?;
         return Ok(IndexType::Tombstone(parent.to_string()));
     }
+
     // line like parent_entity|latest_offset|length|generation => add parent_entity to set
     let vals: Vec<&str> = line.split('|').collect();
     if vals.len() != 4 {
@@ -290,11 +296,35 @@ fn parse_line(line: &str) -> Result<IndexType, IndexError> {
         });
     }
     Ok(IndexType::Entry((
-            vals[0].parse::<String>().map_err(|_| IndexError { kind: IndexErrorKind::Parse, message: format!("Expected first part of Index entry to be a parent entry of string format. Received line {line}")})?,
-            vals[1].parse::<usize>().map_err(|_| IndexError { kind: IndexErrorKind::Parse, message: format!("Expected second part of Index entry to be a positive number. Received line {line}")})?,
-            vals[2].parse::<usize>().map_err(|_| IndexError { kind: IndexErrorKind::Parse, message: format!("Expected third part of Index entry to be a positive number. Received line {line}")})?,
-            vals[3].parse::<usize>().map_err(|_| IndexError { kind: IndexErrorKind::Parse, message: format!("Expected fourth part of Index entry to be a positive number. Received line {line}")})?,
-        )))
+        Some(vals[0])
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or(IndexError {
+                kind: IndexErrorKind::Parse,
+                message: format!(
+                    "Expected first part of Index entry to be a parent entry of string format. Received line {line}"
+                ),
+            })?
+            .to_string(),
+        vals[1].parse::<usize>().map_err(|_| IndexError {
+            kind: IndexErrorKind::Parse,
+            message: format!(
+                "Expected second part of Index entry to be a positive number. Received line {line}"
+            ),
+        })?,
+        vals[2].parse::<usize>().map_err(|_| IndexError {
+            kind: IndexErrorKind::Parse,
+            message: format!(
+                "Expected third part of Index entry to be a positive number. Received line {line}"
+            ),
+        })?,
+        vals[3].parse::<usize>().map_err(|_| IndexError {
+            kind: IndexErrorKind::Parse,
+            message: format!(
+                "Expected fourth part of Index entry to be a positive number. Received line {line}"
+            ),
+        })?,
+    )))
 }
 
 // Errors
@@ -307,7 +337,7 @@ pub enum IndexErrorKind {
     Write,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct IndexError {
     kind: IndexErrorKind,
     message: String,
@@ -329,4 +359,131 @@ impl fmt::Display for IndexErrorKind {
             IndexErrorKind::Write => write!(f, "Index write failed"),
         }
     }
+}
+
+#[cfg(test)]
+mod ds_index_tests_private_api {
+    use super::*;
+
+    #[test]
+    fn test_parse_line_entry_valid() {
+        let expected = IndexType::Entry(("some_parent".to_string(), 20, 10, 5));
+        assert_eq!(parse_line("some_parent|20|10|5").unwrap(), expected);
+    }
+    #[test]
+    fn test_parse_line_tombstone_valid() {
+        let expected = IndexType::Tombstone("some_parent".to_string());
+        assert_eq!(parse_line("-some_parent").unwrap(), expected);
+    }
+    #[test]
+    fn test_parse_line_against_empty_tombstone_returns_parse_error() {
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected a parent entity to follow '-' but received line -".to_string(),
+        };
+        assert_eq!(parse_line("-").unwrap_err(), expected);
+    }
+    #[test]
+    fn test_parse_line_missing_3_separators_returns_parse_error() {
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected index entry to contain 3 '|' separators, but received line some_parent|1|2".to_string(),
+        };
+        assert_eq!(parse_line("some_parent|1|2").unwrap_err(), expected);
+    }
+    #[test]
+    fn test_parse_line_parent_entity_not_string_returns_parse_error() {
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected first part of Index entry to be a parent entry of string format. Received line |1|2|3".to_string(),
+        };
+        assert_eq!(parse_line("|1|2|3").unwrap_err(), expected);
+    }
+    #[test]
+    fn test_parse_line_latest_offset_not_usize_returns_parse_error() {
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected second part of Index entry to be a positive number. Received line some_parent|s|2|3".to_string(),
+        };
+        assert_eq!(parse_line("some_parent|s|2|3").unwrap_err(), expected);
+    }
+    #[test]
+    fn test_parse_line_length_not_usize_returns_parse_error() {
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected third part of Index entry to be a positive number. Received line some_parent|1|a|3".to_string(),
+        };
+        assert_eq!(parse_line("some_parent|1|a|3").unwrap_err(), expected);
+    }
+    #[test]
+    fn test_parse_line_generation_not_usize_returns_parse_error() {
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected fourth part of Index entry to be a positive number. Received line some_parent|1|2|b".to_string(),
+        };
+        assert_eq!(parse_line("some_parent|1|2|b").unwrap_err(), expected);
+    }
+}
+
+#[cfg(test)]
+mod ds_index_tests_public_api {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_create_index_stores_an_index() {}
+    #[test]
+    fn test_create_multiple_indexes() {}
+    #[test]
+    fn test_create_index_of_existing_errors_already_exists() {}
+    #[test]
+    fn test_create_indexes_partial_success_with_error_already_exists() {}
+    #[test]
+    fn test_create_index_with_write_failure_returns_write_error() {}
+    #[test]
+    fn test_read_index_returns_an_index() {}
+    #[test]
+    fn test_read_index_no_existing_returns_not_found_error() {}
+    #[test]
+    fn test_read_index_with_read_failure_returns_read_error() {}
+    #[test]
+    fn test_update_index_appends_to_end() {}
+    #[test]
+    fn test_update_indexes_appends_to_end() {}
+    #[test]
+    fn test_update_index_no_existing_returns_not_found_error() {}
+    #[test]
+    fn test_update_indexes_partial_success_returns_not_found_error() {}
+    #[test]
+    fn test_update_index_with_read_failure_returns_read_error() {}
+    #[test]
+    fn test_update_index_with_write_failure_returns_write_error() {}
+    #[test]
+    fn test_upsert_index_no_existing_appends_to_end() {}
+    #[test]
+    fn test_upsert_index_existing_appends_to_end() {}
+    #[test]
+    fn test_upsert_indexes() {}
+    #[test]
+    fn test_upsert_index_already_existing_appends_to_end() {}
+    #[test]
+    fn test_upsert_indexes_partial_success_returns_not_found_error() {}
+    #[test]
+    fn test_upsert_index_with_write_failure_returns_write_error() {}
+    #[test]
+    fn test_delete_index() {}
+    #[test]
+    fn test_delete_multiple_indexes() {}
+    #[test]
+    fn test_delete_index_no_existing_returns_not_found_error() {}
+    #[test]
+    fn test_delete_with_write_failure_returns_write_error() {}
+    #[test]
+    fn test_idx_parents_returns_all_parents() {}
+    #[test]
+    fn test_idx_parents_with_read_failure_returns_read_error() {}
+    #[test]
+    fn test_idx_parents_with_parse_failure_returns_parse_error() {}
+
+    // TODO: add idx_compact tests here once implemented
 }

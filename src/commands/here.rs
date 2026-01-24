@@ -1,9 +1,11 @@
-use crate::utils::command::get_current_directory_name;
-use crate::utils::os_implementations::open_link;
-use crate::utils::tap_data_store::ReadDataStore;
 use crate::{
     commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        command::get_current_directory_name,
+        datastore::{DS, Datastore},
+        os_implementations::open_link,
+    },
 };
 
 pub(crate) struct Here {
@@ -44,8 +46,7 @@ impl Command for Here {
         match (arg1.as_deref(), arg2.as_deref()) {
             (None, None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                let ds =
-                    ReadDataStore::new(None, parent_entity.clone()).map_err(|e| e.to_string())?;
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
                 let res = ds.read_parent(&parent_entity).map_err(|e| e.to_string())?;
                 let mut res_str = "Opening links: [".to_string();
                 for (link, val) in res.iter() {
@@ -58,8 +59,7 @@ impl Command for Here {
             (Some("--help"), None) => Ok(CommandResult::Value(self.help_message())),
             (Some(link), None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                let ds = ReadDataStore::new(None, parent_entity.to_string())
-                    .map_err(|e| e.to_string())?;
+                let ds = Datastore::new().map_err(|e| e.to_string())?;
                 let (_, val) = ds
                     .read_link(&parent_entity, link)
                     .map_err(|e| e.to_string())?;
