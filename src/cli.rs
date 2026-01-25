@@ -66,11 +66,11 @@ pub(super) fn run_with_stdio() -> i32 {
 
     match run(args) {
         Ok(res) => {
-            writeln!(ctx.writer_out, "{}", res);
+            let _ = writeln!(ctx.writer_out, "{}", res);
             0
         }
         Err(e) => {
-            writeln!(ctx.writer_err, "ERROR: {}", e);
+            let _ = writeln!(ctx.writer_err, "ERROR: {}", e);
             1
         }
     }

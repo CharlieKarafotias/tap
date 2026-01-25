@@ -201,7 +201,15 @@ impl<RW: Read + Write + Seek> Index<RW> {
         })?;
 
         for entry in entries {
-            writeln!(writer, "{}|{}|{}|{}", entry.0, entry.1, entry.2, entry.3);
+            writeln!(writer, "{}|{}|{}|{}", entry.0, entry.1, entry.2, entry.3).map_err(|e| {
+                IndexError {
+                    kind: IndexErrorKind::Write,
+                    message: format!(
+                        "Failed to write line {}|{}|{}|{}: {e}",
+                        entry.0, entry.1, entry.2, entry.3
+                    ),
+                }
+            })?;
         }
         writer.flush().map_err(|e| IndexError {
             kind: IndexErrorKind::Write,
@@ -224,7 +232,10 @@ impl<RW: Read + Write + Seek> Index<RW> {
         })?;
 
         for entry in entries {
-            writeln!(writer, "-{entry}");
+            writeln!(writer, "-{entry}").map_err(|e| IndexError {
+                kind: IndexErrorKind::Write,
+                message: format!("Failed to write line -{entry}: {e}"),
+            })?;
         }
         writer.flush().map_err(|e| IndexError {
             kind: IndexErrorKind::Write,
@@ -430,60 +441,359 @@ mod ds_index_tests_public_api {
     use super::*;
     use std::io::Cursor;
 
+    use std::io::{self, Read, Seek, SeekFrom, Write};
+
+    struct FailingWriter {
+        inner: Cursor<Vec<u8>>,
+    }
+    impl FailingWriter {
+        fn new(initial: Vec<u8>) -> Self {
+            Self {
+                inner: Cursor::new(initial),
+            }
+        }
+    }
+    impl Write for FailingWriter {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::Other, "forced write failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(io::ErrorKind::Other, "forced flush failure"))
+        }
+    }
+    impl Seek for FailingWriter {
+        fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+            self.inner.seek(pos)
+        }
+    }
+    impl Read for FailingWriter {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.inner.read(buf)
+        }
+    }
+    struct FailingReader;
+    impl Write for FailingReader {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl Seek for FailingReader {
+        fn seek(&mut self, _: SeekFrom) -> io::Result<u64> {
+            Ok(0) // allow seek so we reach the write path
+        }
+    }
+    impl Read for FailingReader {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::Other, "forced read failure"))
+        }
+    }
+
     #[test]
-    fn test_create_index_stores_an_index() {}
+    fn test_create_index_stores_an_index() {
+        let mut idx = Index::new(Cursor::new(Vec::new()));
+        idx.idx_create(vec![("some_parent".to_string(), 1, 2, 3)])
+            .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "some_parent|1|2|3\n");
+    }
     #[test]
-    fn test_create_multiple_indexes() {}
+    fn test_create_multiple_indexes() {
+        let mut idx = Index::new(Cursor::new(Vec::new()));
+        idx.idx_create(vec![
+            ("another_parent".to_string(), 4, 5, 6),
+            ("some_parent".to_string(), 1, 2, 3),
+        ])
+        .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\nsome_parent|1|2|3\n");
+    }
     #[test]
-    fn test_create_index_of_existing_errors_already_exists() {}
+    fn test_create_index_of_existing_errors_already_exists() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        let result = idx
+            .idx_create(vec![("another_parent".to_string(), 7, 8, 9)])
+            .unwrap_err();
+        assert_eq!(
+            result,
+            IndexError {
+                kind: IndexErrorKind::AlreadyExists,
+                message: "The following indexes already exist and therefore were not added: [\"another_parent\"]".to_string()
+            }
+        );
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\n");
+    }
     #[test]
-    fn test_create_indexes_partial_success_with_error_already_exists() {}
+    fn test_create_indexes_partial_success_with_error_already_exists() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        let result = idx
+            .idx_create(vec![
+                ("another_parent".to_string(), 3, 2, 1),
+                ("some_parent".to_string(), 1, 2, 3),
+            ])
+            .unwrap_err();
+        assert_eq!(
+            result,
+            IndexError {
+                kind: IndexErrorKind::AlreadyExists,
+                message: "The following indexes already exist and therefore were not added: [\"another_parent\"]".to_string()
+            }
+        );
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\nsome_parent|1|2|3\n");
+    }
     #[test]
-    fn test_create_index_with_write_failure_returns_write_error() {}
+    fn test_create_index_with_write_failure_returns_write_error() {
+        let mut idx = Index::new(FailingWriter::new(vec![]));
+
+        let err = idx
+            .idx_create(vec![("some_parent".to_string(), 1, 2, 3)])
+            .unwrap_err();
+
+        assert_eq!(err.kind, IndexErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
     #[test]
-    fn test_read_index_returns_an_index() {}
+    fn test_read_index_returns_an_index() {
+        let mut idx = Index::new(Cursor::new(b"some_parent|4|5|6\n".to_vec()));
+        let result = idx.idx_read("some_parent").unwrap();
+        assert_eq!(result, ("some_parent".to_string(), 4, 5, 6));
+        // ensure no write operation happened
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "some_parent|4|5|6\n");
+    }
     #[test]
-    fn test_read_index_no_existing_returns_not_found_error() {}
+    fn test_read_index_no_existing_returns_not_found_error() {
+        let mut idx = Index::new(Cursor::new(b"some_parent|4|5|6\n".to_vec()));
+        let result = idx.idx_read("another_parent").unwrap_err();
+        assert_eq!(
+            result,
+            IndexError {
+                kind: IndexErrorKind::NotFound,
+                message: "The following index was not found: another_parent".to_string()
+            }
+        );
+        // ensure no write operation happened
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "some_parent|4|5|6\n");
+    }
     #[test]
-    fn test_read_index_with_read_failure_returns_read_error() {}
+    fn test_read_index_with_read_failure_returns_read_error() {
+        let mut idx = Index::new(FailingReader);
+        let err = idx.idx_read("some_parent").unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Read);
+        assert!(err.message.contains("Line read failed"));
+    }
     #[test]
-    fn test_update_index_appends_to_end() {}
+    fn test_update_index_appends_to_end() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        idx.idx_update(vec![("another_parent".to_string(), 1, 2, 3)])
+            .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\nanother_parent|1|2|3\n");
+    }
     #[test]
-    fn test_update_indexes_appends_to_end() {}
+    fn test_update_indexes_appends_to_end() {
+        let mut idx = Index::new(Cursor::new(
+            b"some_parent|1|2|3\nanother_parent|4|5|6\n".to_vec(),
+        ));
+        idx.idx_update(vec![
+            ("another_parent".to_string(), 1, 2, 3),
+            ("some_parent".to_string(), 4, 5, 6),
+        ])
+        .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(
+            res,
+            "some_parent|1|2|3\nanother_parent|4|5|6\nanother_parent|1|2|3\nsome_parent|4|5|6\n"
+        );
+    }
     #[test]
-    fn test_update_index_no_existing_returns_not_found_error() {}
+    fn test_update_index_no_existing_returns_not_found_error() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        let response = idx
+            .idx_update(vec![("unknown".to_string(), 1, 2, 3)])
+            .unwrap_err();
+        assert_eq!(
+            response,
+            IndexError {
+                kind: IndexErrorKind::NotFound,
+                message:
+                    "The following indexes were not found and therefore not updated: [\"unknown\"]"
+                        .to_string()
+            }
+        );
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\n");
+    }
     #[test]
-    fn test_update_indexes_partial_success_returns_not_found_error() {}
+    fn test_update_indexes_partial_success_returns_not_found_error() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        let response = idx
+            .idx_update(vec![
+                ("another_parent".to_string(), 1, 2, 3),
+                ("unknown".to_string(), 1, 2, 3),
+            ])
+            .unwrap_err();
+        assert_eq!(
+            response,
+            IndexError {
+                kind: IndexErrorKind::NotFound,
+                message:
+                    "The following indexes were not found and therefore not updated: [\"unknown\"]"
+                        .to_string()
+            }
+        );
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\nanother_parent|1|2|3\n");
+    }
     #[test]
-    fn test_update_index_with_read_failure_returns_read_error() {}
+    fn test_update_index_with_read_failure_returns_read_error() {
+        let mut idx = Index::new(FailingReader);
+        let err = idx
+            .idx_update(vec![("another_parent".to_string(), 1, 2, 3)])
+            .unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Read);
+        assert!(err.message.contains("Line read failed"));
+    }
     #[test]
-    fn test_update_index_with_write_failure_returns_write_error() {}
+    fn test_update_index_with_write_failure_returns_write_error() {
+        let mut idx = Index::new(FailingWriter::new(b"another_parent|1|2|3\n".to_vec()));
+        let err = idx
+            .idx_update(vec![("another_parent".to_string(), 1, 2, 3)])
+            .unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
     #[test]
-    fn test_upsert_index_no_existing_appends_to_end() {}
+    fn test_upsert_index_no_existing_appends_to_end() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        idx.idx_upsert(vec![("new_parent".to_string(), 1, 2, 3)])
+            .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\nnew_parent|1|2|3\n");
+    }
     #[test]
-    fn test_upsert_index_existing_appends_to_end() {}
+    fn test_upsert_index_existing_appends_to_end() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        idx.idx_upsert(vec![("another_parent".to_string(), 1, 2, 3)])
+            .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\nanother_parent|1|2|3\n");
+    }
     #[test]
-    fn test_upsert_indexes() {}
+    fn test_upsert_indexes_existing_and_new() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        idx.idx_upsert(vec![
+            ("some_parent".to_string(), 1, 2, 3),
+            ("some_other_parent".to_string(), 10, 22, 31),
+            ("another_parent".to_string(), 1, 2, 31),
+        ])
+        .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(
+            res,
+            "another_parent|4|5|6\nsome_parent|1|2|3\nsome_other_parent|10|22|31\nanother_parent|1|2|31\n"
+        );
+    }
     #[test]
-    fn test_upsert_index_already_existing_appends_to_end() {}
+    fn test_upsert_index_with_write_failure_returns_write_error() {
+        let mut idx = Index::new(FailingWriter::new(b"".to_vec()));
+        let err = idx
+            .idx_upsert(vec![("p".to_string(), 1, 2, 3)])
+            .unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
     #[test]
-    fn test_upsert_indexes_partial_success_returns_not_found_error() {}
+    fn test_delete_index() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        idx.idx_delete(vec!["another_parent"]).unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\n-another_parent\n");
+    }
     #[test]
-    fn test_upsert_index_with_write_failure_returns_write_error() {}
+    fn test_delete_multiple_indexes() {
+        let mut idx = Index::new(Cursor::new(
+            b"another_parent|4|5|6\nsome_parent|1|2|3\n".to_vec(),
+        ));
+        idx.idx_delete(vec!["some_parent", "another_parent"])
+            .unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(
+            res,
+            "another_parent|4|5|6\nsome_parent|1|2|3\n-some_parent\n-another_parent\n"
+        );
+    }
     #[test]
-    fn test_delete_index() {}
+    fn test_delete_index_no_existing_adds_tombstone() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
+        idx.idx_delete(vec!["unknown"]).unwrap();
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(res, "another_parent|4|5|6\n-unknown\n");
+    }
     #[test]
-    fn test_delete_multiple_indexes() {}
+    fn test_delete_with_write_failure_returns_write_error() {
+        let mut idx = Index::new(FailingWriter::new(b"".to_vec()));
+        let err = idx.idx_delete(vec!["p"]).unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
     #[test]
-    fn test_delete_index_no_existing_returns_not_found_error() {}
+    fn test_idx_parents_returns_all_parents() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n-unknown\nsome_parent|1|2|3\nanother_parent|2|1|1\nunknown|2|2|2\n-some_parent\n".to_vec()));
+        let parents = idx.idx_parents().unwrap();
+        assert_eq!(parents.len(), 2);
+        assert!(parents.contains("unknown"));
+        assert!(parents.contains("another_parent"));
+    }
     #[test]
-    fn test_delete_with_write_failure_returns_write_error() {}
+    fn test_idx_parents_with_read_failure_returns_read_error() {
+        let mut idx = Index::new(FailingReader);
+        let err = idx.idx_parents().unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Read);
+        assert!(err.message.contains("Line read failed"));
+    }
     #[test]
-    fn test_idx_parents_returns_all_parents() {}
-    #[test]
-    fn test_idx_parents_with_read_failure_returns_read_error() {}
-    #[test]
-    fn test_idx_parents_with_parse_failure_returns_parse_error() {}
+    fn test_idx_parents_with_parse_failure_returns_parse_error() {
+        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n-unknown\nsome_parent|1|2|3\nanother_parent|2|1|1\nunknown|1|2|b\n-some_parent\n".to_vec()));
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message: "Expected fourth part of Index entry to be a positive number. Received line unknown|1|2|b".to_string(),
+        };
+
+        let err = idx.idx_parents().unwrap_err();
+        assert_eq!(err, expected);
+    }
 
     // TODO: add idx_compact tests here once implemented
 }
