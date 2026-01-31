@@ -49,7 +49,7 @@ impl Command for Show {
 
         match (arg1.as_deref(), arg2.as_deref(), arg3.as_deref()) {
             (None, None, None) => {
-                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let parents = ds.parents().map_err(|e| e.to_string())?;
                 let parent_entities: String = parents.iter().map(|s| format!("  {s}\n")).collect();
                 Ok(CommandResult::Value(format!(
@@ -60,11 +60,11 @@ impl Command for Show {
             (Some("--help"), None, None) => Ok(CommandResult::Value(self.help_message())),
             (Some("here"), None, None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let links = ds.read_parent(&parent_entity).map_err(|e| e.to_string())?;
                 let links_string: String = links
                     .iter()
-                    .map(|(_parent, link)| format!("  {link}\n"))
+                    .map(|(_parent_entity, link, _val)| format!("  {link}\n"))
                     .collect();
                 Ok(CommandResult::Value(format!(
                     "Links of parent entity {parent_entity}:\n{}",
@@ -72,11 +72,11 @@ impl Command for Show {
                 )))
             }
             (Some(parent_entity), None, None) => {
-                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let links = ds.read_parent(&parent_entity).map_err(|e| e.to_string())?;
                 let links_string: String = links
                     .iter()
-                    .map(|(_parent, link)| format!("  {link}\n"))
+                    .map(|(_parent_entity, link, _val)| format!("  {link}\n"))
                     .collect();
                 Ok(CommandResult::Value(format!(
                     "Links of parent entity {parent_entity}:\n{}",
@@ -85,24 +85,24 @@ impl Command for Show {
             }
             (Some("here"), Some(link_name), None) => {
                 let parent_entity = get_current_directory_name().map_err(|e| e.to_string())?;
-                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let link_value = ds
                     .read_link(&parent_entity, link_name)
                     .map_err(|e| e.to_string())?;
                 Ok(CommandResult::Value(format!(
                     "{}: {}",
-                    link_value.0, link_value.1
+                    link_value.1, link_value.2
                 )))
             }
 
             (Some(parent_entity), Some(link_name), None) => {
-                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let link_value = ds
                     .read_link(parent_entity, link_name)
                     .map_err(|e| e.to_string())?;
                 Ok(CommandResult::Value(format!(
                     "{}: {}",
-                    link_value.0, link_value.1
+                    link_value.1, link_value.2
                 )))
             }
             _ => Err(self.error_message()),

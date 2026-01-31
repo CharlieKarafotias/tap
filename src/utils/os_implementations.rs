@@ -5,7 +5,7 @@ use std::{
     process::Command,
 };
 
-pub fn derive_data_local_dir_by_os(
+pub(super) fn derive_data_local_dir_by_os(
     qualifier: &str,
     organization: &str,
     application: &str,
@@ -98,7 +98,7 @@ pub fn open_link(link: &str) -> Result<(), OsImplementationError> {
 
 // Errors
 #[derive(Debug, PartialEq)]
-pub enum OsImplementationErrorKind {
+enum OsImplementationErrorKind {
     CommandFailedToStart,
     CommandNotRunning,
     MissingEnvVar,
@@ -108,7 +108,7 @@ pub enum OsImplementationErrorKind {
 #[derive(Debug)]
 pub struct OsImplementationError {
     kind: OsImplementationErrorKind,
-    message: String,
+    pub message: String,
 }
 
 impl fmt::Display for OsImplementationError {

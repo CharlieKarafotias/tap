@@ -6,7 +6,7 @@ use std::{
 
 /// An Index entry to the Index file.
 /// Format: parent_entity, latest_byte_offset, length, generation
-type Idx = (String, usize, usize, usize);
+pub(super) type Idx = (String, usize, usize, usize);
 
 #[derive(Debug, PartialEq)]
 enum IndexType {
@@ -30,7 +30,7 @@ enum IndexType {
 ///     - Upsert index(es)
 ///     - Delete index(es)
 ///     - Compact index representation
-pub(in super::super::datastore) struct Index<RW: Read + Write + Seek> {
+pub(super) struct Index<RW: Read + Write + Seek> {
     buf: RW,
 }
 
@@ -340,7 +340,7 @@ fn parse_line(line: &str) -> Result<IndexType, IndexError> {
 
 // Errors
 #[derive(Debug, PartialEq)]
-pub enum IndexErrorKind {
+pub(super) enum IndexErrorKind {
     AlreadyExists,
     NotFound,
     Parse,
@@ -349,9 +349,9 @@ pub enum IndexErrorKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct IndexError {
-    kind: IndexErrorKind,
-    message: String,
+pub(super) struct IndexError {
+    pub(super) kind: IndexErrorKind,
+    pub(super) message: String,
 }
 
 impl fmt::Display for IndexError {

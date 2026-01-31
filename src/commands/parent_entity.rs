@@ -49,10 +49,10 @@ impl Command for ParentEntity {
 
         match (parent_entity, link, more_than_2_args) {
             (Some(parent), None, None) => {
-                let ds = Datastore::new().map_err(|e| e.to_string())?;
+                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 let res = ds.read_parent(&parent).map_err(|e| e.to_string())?;
                 let mut res_str = "Opening links: [".to_string();
-                for (link, val) in res.iter() {
+                for (_parent_entity, link, val) in res.iter() {
                     open_link(val).map_err(|e| e.to_string())?;
                     res_str.push_str(format!("{link},").as_str());
                 }
@@ -62,8 +62,8 @@ impl Command for ParentEntity {
             (Some(parent), Some(link), None) => match (parent.as_str(), link.as_str()) {
                 ("--parent-entity", "--help") => Ok(CommandResult::Value(self.help_message())),
                 (parent_entity, link) => {
-                    let ds = Datastore::new().map_err(|e| e.to_string())?;
-                    let (_, val) = ds
+                    let mut ds = Datastore::new().map_err(|e| e.to_string())?;
+                    let (_parent_entity, _link, val) = ds
                         .read_link(parent_entity, link)
                         .map_err(|e| e.to_string())?;
                     open_link(&val).map_err(|e| e.to_string())?;
