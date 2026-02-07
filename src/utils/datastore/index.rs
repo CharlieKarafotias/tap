@@ -278,7 +278,7 @@ impl<RW: Read + Write + Seek> Index<RW> {
     }
 }
 
-/// Parses Index entry from from string representation into the IndexType format
+/// Parses Index entry from string representation into the IndexType format
 ///
 /// Errors:
 ///     - Parse: the current line is not parsable into a Tombstone or Entry representation

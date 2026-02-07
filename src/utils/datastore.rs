@@ -2,7 +2,7 @@ mod data;
 mod index;
 
 use super::os_implementations::{OsImplementationError, derive_data_local_dir_by_os};
-use data::{D, Data, DataError};
+use data::{D, Data, DataError, DeleteTarget};
 use index::{Index, IndexError, IndexErrorKind};
 use std::{
     fmt::{self},
@@ -68,14 +68,19 @@ impl<RW: Read + Write + Seek> DS for Datastore<RW> {
             (p, None) => {
                 // If there is no link, then delete without a check
                 self.i.idx_delete(vec![p])?;
-                self.d.data_delete(None, p, None)?;
+                self.d
+                    .data_delete(DeleteTarget::Parent { parent_entity: p })?;
                 Ok(())
             }
             (p, Some(l)) => {
                 // IF there is link, then get the current Data position with Idx cache, and then
                 // update both Data and Index structures
                 let idx = self.i.idx_read(p)?;
-                let new_idx = self.d.data_delete(Some(&idx), p, Some(l))?;
+                let new_idx = self.d.data_delete(DeleteTarget::Link {
+                    idx: &idx,
+                    parent_entity: p,
+                    link: l,
+                })?;
                 if let Some(new_idx) = new_idx {
                     self.i.idx_upsert(vec![new_idx])?;
                     Ok(())
@@ -152,7 +157,7 @@ impl<RW: Read + Write + Seek> DS for Datastore<RW> {
         let new_idx = self.d.data_upsert(
             idx.as_ref(),
             &parent_entity,
-            vec![(parent_entity.clone(), link_name, value)],
+            vec![(&parent_entity, &link_name, &value)],
         )?;
         self.i.idx_upsert(vec![new_idx])?;
         Ok(())

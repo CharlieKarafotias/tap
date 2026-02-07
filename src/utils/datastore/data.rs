@@ -1,12 +1,23 @@
 use super::index::Idx;
 use std::{
     fmt,
-    io::{Read, Seek, Write},
+    io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write},
 };
 
 /// A Data entry
 /// Format: parent_entity, link_name, link_value
-pub(super) type D = (String, String, String);
+pub(super) type D<'a> = (&'a str, &'a str, &'a str);
+
+pub(super) enum DeleteTarget<'a> {
+    Parent {
+        parent_entity: &'a str,
+    },
+    Link {
+        idx: &'a Idx,
+        parent_entity: &'a str,
+        link: &'a str,
+    },
+}
 
 /// Build & maintains an append-only Data structure
 ///
@@ -120,16 +131,78 @@ impl<RW: Read + Write + Seek> Data<RW> {
     /// Errors:
     ///     - `Corrupt`: the index structure provided a buf location that doesn't match the
     ///        expected parent_entity
-    ///     - `NotFound`: the data entry(ies) specified was not found
+    ///     - `NotFound`: the link (if specified) was not found in the Data structure
+    ///     - `Parse`: the data segment read from the Data structure failed to parse
     ///     - `Read`: a read operation to the Data structure failed
     ///     - `Write`: a write operation to the Data structure failed
-    pub fn data_delete(
-        &mut self,
-        idx: Option<&Idx>,
-        parent_entity: &str,
-        link: Option<&str>,
-    ) -> Result<Option<Idx>, DataError> {
-        todo!()
+    pub fn data_delete(&mut self, delete: DeleteTarget<'_>) -> Result<Option<Idx>, DataError> {
+        let (line_to_write, next_idx): (String, Option<Idx>) = match delete {
+            DeleteTarget::Link {
+                idx,
+                parent_entity,
+                link,
+            } => {
+                let (parent, byte_offset, len_bytes_to_read, generation) = idx;
+
+                if parent != parent_entity {
+                    return Err(DataError {
+                        kind: DataErrorKind::Corrupt,
+                        message: "Index parent does not match provided parent_entity".into(),
+                    });
+                }
+
+                let mut buf = vec![0u8; *len_bytes_to_read];
+                let text = {
+                    let mut reader = BufReader::new(&mut self.buf);
+                    reader
+                        .seek(SeekFrom::Start(*byte_offset as u64))
+                        .map_err(|e| DataError {
+                            kind: DataErrorKind::Corrupt,
+                            message: format!("Failed to seek to data segment: {e}"),
+                        })?;
+
+                    reader.read_exact(&mut buf).map_err(|e| DataError {
+                        kind: DataErrorKind::Read,
+                        message: format!("Failed to read data segment: {e}"),
+                    })?;
+
+                    std::str::from_utf8(&buf).map_err(|e| DataError {
+                        kind: DataErrorKind::Corrupt,
+                        message: format!("Data segment is not valid UTF-8: {e}"),
+                    })?
+                };
+
+                let mut data = parse_data_segment(&text)?;
+                let original_len = data.len();
+                data.retain(|(_, l, _)| *l != link);
+
+                if data.len() == original_len {
+                    return Err(DataError {
+                        kind: DataErrorKind::NotFound,
+                        message: format!("Link '{link}' not found under '{parent_entity}'"),
+                    });
+                }
+                let body = write_d_as_string(parent_entity, data);
+
+                (
+                    body,
+                    Some((
+                        parent_entity.into(),
+                        0, // placeholder, filled after write
+                        0, // placeholder, filled after write
+                        generation + 1,
+                    )),
+                )
+            }
+            DeleteTarget::Parent { parent_entity } => (write_d_as_string(parent_entity, []), None),
+        };
+
+        let (latest_byte_offset, byte_len) = append_line(&mut self.buf, &line_to_write)?;
+        if let Some(idx) = next_idx {
+            Ok(Some((idx.0, latest_byte_offset, byte_len, idx.3)))
+        } else {
+            Ok(None)
+        }
     }
     /// Compacts the Data structure by retaining only the data from the latest parent_entities
     ///
@@ -138,6 +211,118 @@ impl<RW: Read + Write + Seek> Data<RW> {
     pub fn data_compact() -> () {
         todo!()
     }
+}
+
+fn append_line<RW: Read + Write + Seek>(
+    buf: &mut RW,
+    line: &str,
+) -> Result<(usize, usize), DataError> {
+    let mut writer = BufWriter::new(buf);
+
+    writer.seek(SeekFrom::End(0)).map_err(|e| DataError {
+        kind: DataErrorKind::Write,
+        message: format!("Failed to seek to end: {e}"),
+    })?;
+
+    let offset = writer.stream_position().map_err(|_| DataError {
+        kind: DataErrorKind::Write,
+        message: "Unable to determine data offset".into(),
+    })? as usize;
+    let bytes = line.as_bytes();
+
+    writer.write_all(bytes).map_err(|e| DataError {
+        kind: DataErrorKind::Write,
+        message: format!("Failed to write data: {e}"),
+    })?;
+
+    writer.flush().map_err(|e| DataError {
+        kind: DataErrorKind::Write,
+        message: format!("Flush failed: {e}"),
+    })?;
+
+    Ok((offset, bytes.len()))
+}
+
+/// Parses a data segment from buf of bytes into the D format (data type format)
+///
+/// Errors:
+///    - Corrupt: the data segment provided is not UTF-8 format
+///    - Parse: the current data segment is not parsable into a data type format
+fn parse_data_segment<'a>(text: &'a str) -> Result<Vec<D<'a>>, DataError> {
+    let mut lines = text.lines();
+
+    let header = lines.next().ok_or(DataError {
+        kind: DataErrorKind::Parse,
+        message: "Missing data segment header".into(),
+    })?;
+
+    let parent_entity = header
+        .strip_suffix("->")
+        .filter(|s| !s.trim().is_empty())
+        .ok_or(DataError {
+            kind: DataErrorKind::Parse,
+            message: "Invalid header, expected format: parent_entity->".into(),
+        })?
+        .trim();
+
+    let data: Vec<D> = lines
+        .map(|line| parse_data_line(&parent_entity, line))
+        .collect::<Result<_, _>>()?;
+
+    if data.is_empty() {
+        return Err(DataError {
+            kind: DataErrorKind::Parse,
+            message: "Data segment contains no link|value entries".into(),
+        });
+    }
+    Ok(data)
+}
+
+fn parse_data_line<'a>(parent: &'a str, line: &'a str) -> Result<D<'a>, DataError> {
+    let (link, value) = line.split_once('|').ok_or_else(|| DataError {
+        kind: DataErrorKind::Parse,
+        message: format!("Invalid data line, expected link|value: {line}"),
+    })?;
+
+    let link = link.trim();
+    let value = value.trim();
+
+    if link.is_empty() || value.is_empty() {
+        return Err(DataError {
+            kind: DataErrorKind::Parse,
+            message: format!("Empty link or value in line: {line}"),
+        });
+    }
+
+    Ok((parent, link, value))
+}
+
+/// A helper function to write type D as a String
+///
+/// NOTE: Supports types of D where it is empty or contains link/value. If empty, it will return a
+/// tombstone
+fn write_d_as_string<'a>(
+    parent: &str,
+    d: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+) -> String {
+    let mut iter = d.into_iter().peekable();
+    let mut out = String::new();
+
+    if iter.peek().is_none() {
+        out.push('-');
+        out.push_str(parent);
+        out.push('\n');
+    } else {
+        out.push_str(parent);
+        out.push_str("->\n");
+        for (_, l, v) in iter {
+            out.push_str(l);
+            out.push('|');
+            out.push_str(v);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 // Errors
