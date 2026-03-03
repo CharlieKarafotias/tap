@@ -6,7 +6,7 @@ use std::{
 
 /// A Data entry
 /// Format: parent_entity, link_name, link_value
-pub(super) type D<'a> = (&'a str, &'a str, &'a str);
+pub(super) type D = (String, String, String);
 
 pub(super) enum DeleteTarget<'a> {
     Parent {
@@ -67,7 +67,41 @@ impl<RW: Read + Write + Seek> Data<RW> {
         parent_entity: &str,
         link: Option<&str>,
     ) -> Result<Vec<D>, DataError> {
-        todo!()
+        let (parent, byte_offset, len_bytes_to_read, _generation) = idx;
+        if parent != parent_entity {
+            return Err(DataError {
+                kind: DataErrorKind::Corrupt,
+                message: "Index parent does not match provided parent_entity".into(),
+            });
+        }
+
+        let mut buf = vec![0u8; *len_bytes_to_read];
+        let text = {
+            let mut reader = BufReader::new(&mut self.buf);
+            reader
+                .seek(SeekFrom::Start(*byte_offset as u64))
+                .map_err(|e| DataError {
+                    kind: DataErrorKind::Corrupt,
+                    message: format!("Failed to seek to data segment: {e}"),
+                })?;
+
+            reader.read_exact(&mut buf).map_err(|e| DataError {
+                kind: DataErrorKind::Read,
+                message: format!("Failed to read data segment: {e}"),
+            })?;
+
+            String::from_utf8(buf).map_err(|e| DataError {
+                kind: DataErrorKind::Corrupt,
+                message: format!("Data segment is not valid UTF-8: {e}"),
+            })?
+        };
+
+        let mut data = parse_data_segment(&text)?;
+
+        if let Some(link) = link {
+            data.retain(|(_, l, _)| *l == link);
+        }
+        Ok(data)
     }
     /// Updates Data entries in the Data structure by appending them to the end of the
     /// structure. This operation should be used when the caller wants to ensure updates are only
@@ -213,6 +247,39 @@ impl<RW: Read + Write + Seek> Data<RW> {
     }
 }
 
+/// Appends the provided string slice to the end of the given buffer.
+///
+/// This function seeks to the end of the underlying stream, writes the
+/// UTF-8 bytes of `line`, flushes the writer, and returns the byte offset
+/// at which the write began along with the number of bytes written.
+///
+/// # Type Parameters
+///
+/// * `RW` - Any type implementing [`Read`], [`Write`], and [`Seek`].
+///
+/// # Arguments
+///
+/// * `buf` - A mutable reference to a readable, writable, and seekable stream.
+/// * `line` - The string slice to append.
+///
+/// # Returns
+///
+/// Returns `Ok((offset, len))` where:
+///
+/// * `offset` is the byte position in the stream where the write started.
+/// * `len` is the number of bytes written (i.e., `line.as_bytes().len()`).
+///
+/// Returns `Err(DataError)` if seeking, writing, flushing, or determining
+/// the stream position fails.
+///
+/// # Notes
+///
+/// - The function does not automatically append a newline.
+/// - The caller is responsible for ensuring any required line delimiters.
+/// - The returned offset can be used for indexing or later random access.
+///
+/// # Errors
+///    - Write: All I/O failures are mapped to `DataErrorKind::Write`.
 fn append_line<RW: Read + Write + Seek>(
     buf: &mut RW,
     line: &str,
@@ -246,13 +313,13 @@ fn append_line<RW: Read + Write + Seek>(
 /// Parses a data segment from buf of bytes into the D format (data type format)
 ///
 /// Errors:
-///    - Corrupt: the data segment provided is not UTF-8 format
+///    - Corrupt: the current data segment provided by Index was not the expected format
 ///    - Parse: the current data segment is not parsable into a data type format
-fn parse_data_segment<'a>(text: &'a str) -> Result<Vec<D<'a>>, DataError> {
+fn parse_data_segment(text: &str) -> Result<Vec<D>, DataError> {
     let mut lines = text.lines();
 
     let header = lines.next().ok_or(DataError {
-        kind: DataErrorKind::Parse,
+        kind: DataErrorKind::Corrupt,
         message: "Missing data segment header".into(),
     })?;
 
@@ -278,7 +345,12 @@ fn parse_data_segment<'a>(text: &'a str) -> Result<Vec<D<'a>>, DataError> {
     Ok(data)
 }
 
-fn parse_data_line<'a>(parent: &'a str, line: &'a str) -> Result<D<'a>, DataError> {
+/// A helper function that parses a data line into type D
+///
+/// Errors:
+///    - Parse: the line segment provided was invalid (missing '|' separator or missing link or
+///    value
+fn parse_data_line(parent: &str, line: &str) -> Result<D, DataError> {
     let (link, value) = line.split_once('|').ok_or_else(|| DataError {
         kind: DataErrorKind::Parse,
         message: format!("Invalid data line, expected link|value: {line}"),
@@ -294,16 +366,16 @@ fn parse_data_line<'a>(parent: &'a str, line: &'a str) -> Result<D<'a>, DataErro
         });
     }
 
-    Ok((parent, link, value))
+    Ok((parent.into(), link.into(), value.into()))
 }
 
 /// A helper function to write type D as a String
 ///
 /// NOTE: Supports types of D where it is empty or contains link/value. If empty, it will return a
 /// tombstone
-fn write_d_as_string<'a>(
+fn write_d_as_string(
     parent: &str,
-    d: impl IntoIterator<Item = (&'a str, &'a str, &'a str)>,
+    d: impl IntoIterator<Item = (String, String, String)>,
 ) -> String {
     let mut iter = d.into_iter().peekable();
     let mut out = String::new();
@@ -316,9 +388,9 @@ fn write_d_as_string<'a>(
         out.push_str(parent);
         out.push_str("->\n");
         for (_, l, v) in iter {
-            out.push_str(l);
+            out.push_str(&l);
             out.push('|');
-            out.push_str(v);
+            out.push_str(&v);
             out.push('\n');
         }
     }
@@ -327,7 +399,7 @@ fn write_d_as_string<'a>(
 
 // Errors
 #[derive(Debug, PartialEq)]
-enum DataErrorKind {
+pub(super) enum DataErrorKind {
     AlreadyExists,
     Corrupt,
     NotFound,
@@ -361,4 +433,331 @@ impl fmt::Display for DataErrorKind {
             DataErrorKind::Write => write!(f, "Data write failed"),
         }
     }
+}
+
+#[cfg(test)]
+mod ds_data_tests_private_api {
+    use super::*;
+    use std::io::{self, Cursor, Read, Seek, SeekFrom};
+    struct FailingWriter;
+
+    impl Read for FailingWriter {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::Other, "write failed"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Seek for FailingWriter {
+        fn seek(&mut self, _: SeekFrom) -> io::Result<u64> {
+            Ok(0)
+        }
+    }
+
+    #[test]
+    fn test_write_d_as_string_tombstone() {
+        let expected = "-some_parent\n";
+        assert_eq!(write_d_as_string("some_parent", []), expected);
+    }
+    #[test]
+    fn test_write_d_as_string_new_data() {
+        let expected = "some_parent->\nsome_key|some_value\n";
+        assert_eq!(
+            write_d_as_string(
+                "some_parent",
+                [(
+                    "some_parent".to_string(),
+                    "some_key".to_string(),
+                    "some_value".to_string()
+                )]
+            ),
+            expected
+        );
+    }
+    #[test]
+    fn test_parse_data_line_old_format() {
+        let input = "  some_key|some_value";
+        assert_eq!(
+            parse_data_line("some_parent", input),
+            Ok((
+                "some_parent".to_string(),
+                "some_key".to_string(),
+                "some_value".to_string()
+            ))
+        )
+    }
+    #[test]
+    fn test_parse_data_line_new_format() {
+        let input = "some_key|some_value";
+        assert_eq!(
+            parse_data_line("some_parent", input),
+            Ok((
+                "some_parent".to_string(),
+                "some_key".to_string(),
+                "some_value".to_string()
+            ))
+        )
+    }
+    #[test]
+    fn test_parse_data_line_err_missing_separator() {
+        let input = "some_keysome_value";
+        let err = parse_data_line("some_parent", input);
+        assert_eq!(
+            err,
+            Err(DataError {
+                kind: DataErrorKind::Parse,
+                message: "Invalid data line, expected link|value: some_keysome_value".to_string()
+            })
+        )
+    }
+    #[test]
+    fn test_parse_data_line_err_missing_key() {
+        let input = "|some_value";
+        let err = parse_data_line("some_parent", input);
+        assert_eq!(
+            err,
+            Err(DataError {
+                kind: DataErrorKind::Parse,
+                message: "Empty link or value in line: |some_value".to_string()
+            })
+        )
+    }
+    #[test]
+    fn test_parse_data_line_err_missing_value() {
+        let input = "some_key|";
+        let err = parse_data_line("some_parent", input);
+        assert_eq!(
+            err,
+            Err(DataError {
+                kind: DataErrorKind::Parse,
+                message: "Empty link or value in line: some_key|".to_string()
+            })
+        )
+    }
+    #[test]
+    fn test_parse_data_segment_old_format() {
+        let input = "searchEngines->\n  google|www.google.com\n  bing|www.bing.com\n";
+        let res = parse_data_segment(input);
+        assert_eq!(
+            res,
+            Ok(vec![
+                (
+                    "searchEngines".to_string(),
+                    "google".to_string(),
+                    "www.google.com".to_string()
+                ),
+                (
+                    "searchEngines".to_string(),
+                    "bing".to_string(),
+                    "www.bing.com".to_string()
+                )
+            ])
+        );
+    }
+    #[test]
+    fn test_parse_data_segment_new_format() {
+        let input = "searchEngines->\ngoogle|www.google.com\nbing|www.bing.com\n";
+        let res = parse_data_segment(input);
+        assert_eq!(
+            res,
+            Ok(vec![
+                (
+                    "searchEngines".to_string(),
+                    "google".to_string(),
+                    "www.google.com".to_string()
+                ),
+                (
+                    "searchEngines".to_string(),
+                    "bing".to_string(),
+                    "www.bing.com".to_string()
+                )
+            ])
+        );
+    }
+    #[test]
+    fn test_parse_data_segment_err_empty() {
+        let input = "";
+        let res = parse_data_segment(input);
+        assert_eq!(
+            res,
+            Err(DataError {
+                kind: DataErrorKind::Corrupt,
+                message: "Missing data segment header".to_string()
+            })
+        );
+    }
+    #[test]
+    fn test_parse_data_segment_err_invalid_header() {
+        let input = "some_parent\ngoogle|www.google.com\n";
+        let res = parse_data_segment(input);
+        assert_eq!(
+            res,
+            Err(DataError {
+                kind: DataErrorKind::Parse,
+                message: "Invalid header, expected format: parent_entity->".to_string()
+            })
+        );
+    }
+    #[test]
+    fn test_parse_data_segment_err_no_data() {
+        let input = "some_parent->\n";
+        let res = parse_data_segment(input);
+        assert_eq!(
+            res,
+            Err(DataError {
+                kind: DataErrorKind::Parse,
+                message: "Data segment contains no link|value entries".to_string()
+            })
+        );
+    }
+    #[test]
+    fn test_append_line_to_empty_buffer() {
+        let mut cursor = Cursor::new(Vec::new());
+
+        let (offset, len) = append_line(&mut cursor, "hello").unwrap();
+        assert_eq!(offset, 0);
+        assert_eq!(len, 5);
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let mut contents = String::new();
+        cursor.read_to_string(&mut contents).unwrap();
+
+        assert_eq!(contents, "hello");
+    }
+    #[test]
+    fn test_append_line_to_existing_data() {
+        let mut cursor = Cursor::new(b"existing".to_vec());
+
+        let (offset, len) = append_line(&mut cursor, "data").unwrap();
+
+        assert_eq!(offset, 8);
+        assert_eq!(len, 4);
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let mut contents = String::new();
+        cursor.read_to_string(&mut contents).unwrap();
+
+        assert_eq!(contents, "existingdata");
+    }
+    #[test]
+    fn test_append_line_multiple_times() {
+        let mut cursor = Cursor::new(Vec::new());
+
+        let (offset1, len1) = append_line(&mut cursor, "abc").unwrap();
+        let (offset2, len2) = append_line(&mut cursor, "def").unwrap();
+
+        assert_eq!(offset1, 0);
+        assert_eq!(len1, 3);
+
+        assert_eq!(offset2, 3);
+        assert_eq!(len2, 3);
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let mut contents = String::new();
+        cursor.read_to_string(&mut contents).unwrap();
+
+        assert_eq!(contents, "abcdef");
+    }
+    #[test]
+    fn test_append_line_empty_string() {
+        let mut cursor = Cursor::new(Vec::new());
+
+        let (offset, len) = append_line(&mut cursor, "").unwrap();
+
+        assert_eq!(offset, 0);
+        assert_eq!(len, 0);
+
+        cursor.seek(SeekFrom::Start(0)).unwrap();
+        let mut contents = String::new();
+        cursor.read_to_string(&mut contents).unwrap();
+
+        assert_eq!(contents, "");
+    }
+    #[test]
+    fn append_line_write_failure_returns_error() {
+        let mut writer = FailingWriter;
+
+        let err = append_line(&mut writer, "data").unwrap_err();
+
+        assert_eq!(err.kind, DataErrorKind::Write);
+    }
+}
+
+#[cfg(test)]
+mod ds_data_tests_public_api {
+    use super::*;
+    use std::io::Cursor;
+
+    use std::io::{self, Read, Seek, SeekFrom, Write};
+
+    struct FailingWriter {
+        inner: Cursor<Vec<u8>>,
+    }
+    impl FailingWriter {
+        fn new(initial: Vec<u8>) -> Self {
+            Self {
+                inner: Cursor::new(initial),
+            }
+        }
+    }
+    impl Write for FailingWriter {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::Other, "forced write failure"))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Err(io::Error::new(io::ErrorKind::Other, "forced flush failure"))
+        }
+    }
+    impl Seek for FailingWriter {
+        fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+            self.inner.seek(pos)
+        }
+    }
+    impl Read for FailingWriter {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.inner.read(buf)
+        }
+    }
+    struct FailingReader;
+    impl Write for FailingReader {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    impl Seek for FailingReader {
+        fn seek(&mut self, _: SeekFrom) -> io::Result<u64> {
+            Ok(0) // allow seek so we reach the write path
+        }
+    }
+    impl Read for FailingReader {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Err(io::Error::new(io::ErrorKind::Other, "forced read failure"))
+        }
+    }
+
+    // TODO: implement these
+    #[test]
+    fn test_data_read_() {}
+    #[test]
+    fn test_data_update_() {}
+    #[test]
+    fn test_data_upsert_() {}
+    #[test]
+    fn test_data_delete_() {}
+    #[test]
+    fn test_data_compact_() {}
 }

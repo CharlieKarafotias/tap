@@ -157,7 +157,7 @@ impl<RW: Read + Write + Seek> DS for Datastore<RW> {
         let new_idx = self.d.data_upsert(
             idx.as_ref(),
             &parent_entity,
-            vec![(&parent_entity, &link_name, &value)],
+            vec![(parent_entity.clone(), link_name, value)],
         )?;
         self.i.idx_upsert(vec![new_idx])?;
         Ok(())
