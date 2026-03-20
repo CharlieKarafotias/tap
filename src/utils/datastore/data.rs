@@ -74,28 +74,7 @@ impl<RW: Read + Write + Seek> Data<RW> {
                 message: "The parent_entity from Index does not match the provided parent_entity in the function call".into(),
             });
         }
-
-        let mut buf = vec![0u8; *len_bytes_to_read];
-        let text = {
-            let mut reader = BufReader::new(&mut self.buf);
-            reader
-                .seek(SeekFrom::Start(*byte_offset as u64))
-                .map_err(|e| DataError {
-                    kind: DataErrorKind::Corrupt,
-                    message: format!("Failed to seek to data segment: {e}"),
-                })?;
-
-            reader.read_exact(&mut buf).map_err(|e| DataError {
-                kind: DataErrorKind::Read,
-                message: format!("Failed to read data segment: {e}"),
-            })?;
-
-            String::from_utf8(buf).map_err(|e| DataError {
-                kind: DataErrorKind::Corrupt,
-                message: format!("Data segment is not valid UTF-8: {e}"),
-            })?
-        };
-
+        let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
         let mut data = parse_data_segment(&text)?;
 
         if data.len() > 0 {
@@ -139,8 +118,51 @@ impl<RW: Read + Write + Seek> Data<RW> {
         parent_entity: &str,
         updates: Vec<D>,
     ) -> Result<Idx, DataError> {
-        // NOTE: should return new buf start pos + size so Idx can be updated (return updated Idx)
-        todo!()
+        let (parent, byte_offset, len_bytes_to_read, generation) = idx;
+        if parent != parent_entity {
+            return Err(DataError {
+                kind: DataErrorKind::Corrupt,
+                message: "The parent_entity from Index does not match the provided parent_entity in the function call".into(),
+            });
+        }
+
+        let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
+        let mut data = parse_data_segment(&text)?;
+
+        if data.len() > 0 {
+            if &data[0].0 != parent || data[0].0 != parent_entity {
+                return Err(DataError {
+                    kind: DataErrorKind::Corrupt,
+                    message: "The parent_entity from Index does not match the parent_entity parsed in Data".into(),
+                });
+            }
+        }
+
+        let mut links_not_found = vec![];
+        for (_, link_name, link_value) in updates {
+            if let Some(pos) = data.iter().position(|(_, name, _)| name == &link_name) {
+                let mut item = data.remove(pos);
+                item.2 = link_value;
+                data.push(item);
+            } else {
+                links_not_found.push(link_name);
+            }
+        }
+
+        // Update Data struct
+        let body = write_d_as_string(parent_entity, data);
+        let (offset, len) = append_line(&mut self.buf, &body)?;
+
+        // After write, if some links were not found then inform user
+        if !links_not_found.is_empty() {
+            return Err(DataError {
+                kind: DataErrorKind::NotFound,
+                message: format!(
+                    "The following links were not found and therefore not updated: {links_not_found:?}"
+                ),
+            });
+        }
+        Ok((parent_entity.into(), offset, len, generation + 1))
     }
     /// Creates/Upserts Data entries in the Data structure by appending them to the end of the
     /// structure. An Idx is optional as its possible the parent_entity does not exist in the Data
@@ -160,8 +182,48 @@ impl<RW: Read + Write + Seek> Data<RW> {
         parent_entity: &str,
         updates: Vec<D>,
     ) -> Result<Idx, DataError> {
-        // NOTE: should return new buf start pos + size so Idx can be updated (return updated Idx)
-        todo!()
+        match idx {
+            Some((parent, byte_offset, len_bytes_to_read, generation)) => {
+                if parent != parent_entity {
+                    return Err(DataError {
+                    kind: DataErrorKind::Corrupt,
+                    message: "The parent_entity from Index does not match the provided parent_entity in the function call".into(),
+                });
+                }
+
+                let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
+                let mut data = parse_data_segment(&text)?;
+
+                if !data.is_empty() {
+                    if &data[0].0 != parent || data[0].0 != parent_entity {
+                        return Err(DataError {
+                        kind: DataErrorKind::Corrupt,
+                        message: "The parent_entity from Index does not match the parent_entity parsed in Data".into(),
+                    });
+                    }
+                }
+
+                for (parent, link_name, link_value) in updates {
+                    if let Some(pos) = data.iter().position(|(_, name, _)| name == &link_name) {
+                        let mut item = data.remove(pos);
+                        item.2 = link_value;
+                        data.push(item);
+                    } else {
+                        data.push((parent, link_name, link_value));
+                    }
+                }
+
+                let body = write_d_as_string(parent_entity, data);
+                let (offset, len) = append_line(&mut self.buf, &body)?;
+
+                Ok((parent_entity.into(), offset, len, generation + 1))
+            }
+            None => {
+                let body = write_d_as_string(parent_entity, updates);
+                let (offset, len) = append_line(&mut self.buf, &body)?;
+                Ok((parent_entity.into(), offset, len, 0))
+            }
+        }
     }
     /// Delete Data entries in the Data structure by appending a tombstone (in case of
     /// parent_entity delete) or appending data without the link (IF provided).
@@ -201,27 +263,7 @@ impl<RW: Read + Write + Seek> Data<RW> {
                     });
                 }
 
-                let mut buf = vec![0u8; *len_bytes_to_read];
-                let text = {
-                    let mut reader = BufReader::new(&mut self.buf);
-                    reader
-                        .seek(SeekFrom::Start(*byte_offset as u64))
-                        .map_err(|e| DataError {
-                            kind: DataErrorKind::Corrupt,
-                            message: format!("Failed to seek to data segment: {e}"),
-                        })?;
-
-                    reader.read_exact(&mut buf).map_err(|e| DataError {
-                        kind: DataErrorKind::Read,
-                        message: format!("Failed to read data segment: {e}"),
-                    })?;
-
-                    std::str::from_utf8(&buf).map_err(|e| DataError {
-                        kind: DataErrorKind::Corrupt,
-                        message: format!("Data segment is not valid UTF-8: {e}"),
-                    })?
-                };
-
+                let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
                 let mut data = parse_data_segment(&text)?;
                 let original_len = data.len();
                 data.retain(|(_, l, _)| *l != link);
@@ -263,6 +305,44 @@ impl<RW: Read + Write + Seek> Data<RW> {
     }
 }
 
+/// Reads a data segment from the provided buffer using the given byte offset
+/// and length, and returns it as a UTF-8 `String`.
+///
+/// This function is used internally to retrieve a serialized data segment prior
+/// to parsing into the in-memory Data representation.
+///
+/// Returns:
+///     - `String`: the UTF-8 decoded contents of the requested data segment
+///
+/// Errors:
+///     - `Corrupt`: the seek operation failed or the bytes are not valid UTF-8
+///     - `Read`: a read operation from the underlying buffer failed
+fn read_segment<R: Read + Seek>(
+    buf: &mut R,
+    byte_offset: usize,
+    len_bytes_to_read: usize,
+) -> Result<String, DataError> {
+    let mut bytes = vec![0u8; len_bytes_to_read];
+
+    let mut reader = BufReader::new(buf);
+
+    reader
+        .seek(SeekFrom::Start(byte_offset as u64))
+        .map_err(|e| DataError {
+            kind: DataErrorKind::Corrupt,
+            message: format!("Failed to seek to data segment: {e}"),
+        })?;
+
+    reader.read_exact(&mut bytes).map_err(|e| DataError {
+        kind: DataErrorKind::Read,
+        message: format!("Failed to read data segment: {e}"),
+    })?;
+
+    String::from_utf8(bytes).map_err(|e| DataError {
+        kind: DataErrorKind::Corrupt,
+        message: format!("Data segment is not valid UTF-8: {e}"),
+    })
+}
 /// Appends the provided string slice to the end of the given buffer.
 ///
 /// This function seeks to the end of the underlying stream, writes the
@@ -699,12 +779,69 @@ mod ds_data_tests_private_api {
         assert_eq!(contents, "");
     }
     #[test]
-    fn append_line_write_failure_returns_error() {
+    fn test_append_line_write_failure_returns_error() {
         let mut writer = FailingWriter;
 
         let err = append_line(&mut writer, "data").unwrap_err();
 
         assert_eq!(err.kind, DataErrorKind::Write);
+    }
+    #[test]
+    fn test_read_segment_full_buffer() {
+        let mut cursor = Cursor::new(b"hello world".to_vec());
+
+        let res = read_segment(&mut cursor, 0, 11).unwrap();
+
+        assert_eq!(res, "hello world");
+    }
+    #[test]
+    fn test_read_segment_with_offset() {
+        let mut cursor = Cursor::new(b"prefix_hello_world_suffix".to_vec());
+
+        let res = read_segment(&mut cursor, 7, 11).unwrap();
+
+        assert_eq!(res, "hello_world");
+    }
+    #[test]
+    fn test_read_segment_partial() {
+        let mut cursor = Cursor::new(b"abcdefg".to_vec());
+
+        let res = read_segment(&mut cursor, 2, 3).unwrap();
+
+        assert_eq!(res, "cde");
+    }
+    #[test]
+    fn test_read_segment_invalid_utf8() {
+        let mut cursor = Cursor::new(vec![0xff, 0xfe, 0xfd]);
+
+        let err = read_segment(&mut cursor, 0, 3).unwrap_err();
+
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert!(err.message.contains("UTF-8"));
+    }
+    #[test]
+    fn test_read_segment_out_of_bounds() {
+        let mut cursor = Cursor::new(b"short".to_vec());
+
+        let err = read_segment(&mut cursor, 0, 100).unwrap_err();
+
+        assert_eq!(err.kind, DataErrorKind::Read);
+    }
+    #[test]
+    fn test_read_segment_zero_length() {
+        let mut cursor = Cursor::new(b"data".to_vec());
+
+        let res = read_segment(&mut cursor, 0, 0).unwrap();
+
+        assert_eq!(res, "");
+    }
+    #[test]
+    fn test_read_segment_offset_at_end() {
+        let mut cursor = Cursor::new(b"data".to_vec());
+
+        let res = read_segment(&mut cursor, 4, 0).unwrap();
+
+        assert_eq!(res, "");
     }
 }
 
@@ -889,8 +1026,8 @@ mod ds_data_tests_public_api {
             res,
             (
                 "search_engines".to_string(),
-                bytes.len() + 1,
-                expected_bytes.len(),
+                bytes.len(),
+                expected_bytes.len() - bytes.len(),
                 1
             )
         );
@@ -922,8 +1059,8 @@ mod ds_data_tests_public_api {
             res,
             (
                 "search_engines".to_string(),
-                bytes.len() + 1,
-                expected_bytes.len(),
+                bytes.len(),
+                expected_bytes.len() - bytes.len(),
                 1
             )
         );
@@ -989,7 +1126,7 @@ mod ds_data_tests_public_api {
         assert_eq!(err.kind, DataErrorKind::NotFound);
         assert_eq!(
             err.message,
-            "The following link was not found: bing".to_string()
+            "The following links were not found and therefore not updated: [\"bing\"]".to_string()
         );
     }
     #[test]
@@ -1011,12 +1148,11 @@ mod ds_data_tests_public_api {
     }
     #[test]
     fn test_data_update_err_write_fail() {
-        let mut data = Data::new(FailingWriter::new(
-            b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n".to_vec(),
-        ));
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(FailingWriter::new(bytes.to_vec()));
         let err = data
             .data_update(
-                &("search_engines".to_string(), 0, 10, 0),
+                &("search_engines".to_string(), 0, bytes.len(), 0),
                 "search_engines",
                 vec![(
                     "search_engines".into(),
@@ -1034,7 +1170,7 @@ mod ds_data_tests_public_api {
     fn test_data_update_partial_err_missing_one_of_links() {
         let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
         let mut data = Data::new(Cursor::new(bytes.to_vec()));
-        let res = data
+        let err = data
             .data_update(
                 &("search_engines".to_string(), 0, bytes.len(), 0),
                 "search_engines",
@@ -1051,18 +1187,18 @@ mod ds_data_tests_public_api {
                     ),
                 ],
             )
-            .unwrap();
-        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nyahoo|https://www.yahoo.com\ngoogle|www.google.com\n";
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::NotFound);
         assert_eq!(
-            res,
-            (
-                "search_engines".to_string(),
-                bytes.len() + 1,
-                expected_bytes.len(),
-                1
-            )
+            err.message,
+            "The following links were not found and therefore not updated: [\"duckduckgo\"]"
         );
-        // TODO: should there be a partial error message check or some result that surfaces partial errors?
+
+        let buf = data.buf.get_ref();
+        let result_str = std::str::from_utf8(buf).unwrap();
+
+        let expected = "search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n";
+        assert_eq!(result_str, expected);
     }
     #[test]
     fn test_data_upsert_single_existing_link() {
@@ -1079,13 +1215,13 @@ mod ds_data_tests_public_api {
                 )],
             )
             .unwrap();
-        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nyahoo|https://www.yahoo.com\ngoogle|www.google.com\n";
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n";
         assert_eq!(
             res,
             (
                 "search_engines".to_string(),
-                bytes.len() + 1,
-                expected_bytes.len(),
+                bytes.len(),
+                expected_bytes.len() - bytes.len(),
                 1
             )
         );
@@ -1104,7 +1240,7 @@ mod ds_data_tests_public_api {
         let expected_bytes = b"news->\ncnn|www.cnn.com\n";
         assert_eq!(
             res,
-            ("news".to_string(), bytes.len() + 1, expected_bytes.len(), 0)
+            ("news".to_string(), bytes.len(), expected_bytes.len(), 0)
         );
     }
     #[test]
@@ -1129,13 +1265,13 @@ mod ds_data_tests_public_api {
                 ],
             )
             .unwrap();
-        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nbrave|www.brave.com\nduckduckgo|www.duckduckgo.com\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nbrave|www.brave.com\nduckduckgo|www.duckduckgo.com\n";
         assert_eq!(
             res,
             (
                 "search_engines".to_string(),
-                bytes.len() + 1,
-                expected_bytes.len(),
+                bytes.len(),
+                expected_bytes.len() - bytes.len(),
                 1
             )
         );
@@ -1188,7 +1324,7 @@ mod ds_data_tests_public_api {
         let mut data = Data::new(FailingReader);
         let err = data
             .data_upsert(
-                None,
+                Some(&("search_engines".to_string(), 0, 5, 0)),
                 "search_engines",
                 vec![(
                     "search_engines".into(),
@@ -1202,12 +1338,11 @@ mod ds_data_tests_public_api {
     }
     #[test]
     fn test_data_upsert_err_write_fail() {
-        let mut data = Data::new(FailingWriter::new(
-            b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n".to_vec(),
-        ));
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(FailingWriter::new(bytes.to_vec()));
         let err = data
             .data_upsert(
-                Some(&("search_engines".to_string(), 0, 10, 0)),
+                Some(&("search_engines".to_string(), 0, bytes.len(), 0)),
                 "search_engines",
                 vec![(
                     "search_engines".into(),
