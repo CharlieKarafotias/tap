@@ -71,7 +71,7 @@ impl<RW: Read + Write + Seek> Data<RW> {
         if parent != parent_entity {
             return Err(DataError {
                 kind: DataErrorKind::Corrupt,
-                message: "Index parent does not match provided parent_entity".into(),
+                message: "The parent_entity from Index does not match the provided parent_entity in the function call".into(),
             });
         }
 
@@ -98,9 +98,25 @@ impl<RW: Read + Write + Seek> Data<RW> {
 
         let mut data = parse_data_segment(&text)?;
 
+        if data.len() > 0 {
+            if &data[0].0 != parent || data[0].0 != parent_entity {
+                return Err(DataError {
+                    kind: DataErrorKind::Corrupt,
+                    message: "The parent_entity from Index does not match the parent_entity parsed in Data".into(),
+                });
+            }
+        }
+
         if let Some(link) = link {
             data.retain(|(_, l, _)| *l == link);
+            if data.is_empty() {
+                return Err(DataError {
+                    kind: DataErrorKind::NotFound,
+                    message: format!("The following link was not found: {link}"),
+                });
+            }
         }
+
         Ok(data)
     }
     /// Updates Data entries in the Data structure by appending them to the end of the
@@ -181,7 +197,7 @@ impl<RW: Read + Write + Seek> Data<RW> {
                 if parent != parent_entity {
                     return Err(DataError {
                         kind: DataErrorKind::Corrupt,
-                        message: "Index parent does not match provided parent_entity".into(),
+                        message: "The parent_entity from Index does not match the provided parent_entity in the function call".into(),
                     });
                 }
 
@@ -213,7 +229,7 @@ impl<RW: Read + Write + Seek> Data<RW> {
                 if data.len() == original_len {
                     return Err(DataError {
                         kind: DataErrorKind::NotFound,
-                        message: format!("Link '{link}' not found under '{parent_entity}'"),
+                        message: format!("The following link was not found: {link}"),
                     });
                 }
                 let body = write_d_as_string(parent_entity, data);
@@ -749,15 +765,557 @@ mod ds_data_tests_public_api {
         }
     }
 
-    // TODO: implement these
     #[test]
-    fn test_data_read_() {}
+    fn test_data_read_all_links() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let result = data
+            .data_read(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            result,
+            vec![
+                (
+                    "search_engines".into(),
+                    "google".into(),
+                    "www.google.com".into()
+                ),
+                (
+                    "search_engines".into(),
+                    "yahoo".into(),
+                    "www.yahoo.com".into()
+                )
+            ]
+        )
+    }
     #[test]
-    fn test_data_update_() {}
+    fn test_data_read_specific_link() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let result = data
+            .data_read(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                Some("yahoo"),
+            )
+            .unwrap();
+        assert_eq!(
+            result,
+            vec![(
+                "search_engines".into(),
+                "yahoo".into(),
+                "www.yahoo.com".into()
+            )]
+        )
+    }
     #[test]
-    fn test_data_upsert_() {}
+    fn test_data_read_link_err_not_found() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_read(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                Some("bing"),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::NotFound);
+        assert_eq!(
+            err.message,
+            "The following link was not found: bing".to_string()
+        );
+    }
     #[test]
-    fn test_data_delete_() {}
+    fn test_data_read_err_corrupt_index_parent_and_function_caller_parent() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_read(
+                &("se".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                Some("google"),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the provided parent_entity in the function call".to_string()
+        );
+    }
+    #[test]
+    fn test_data_read_err_corrupt_index_and_data_parent_mismatch() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_read(&("se".to_string(), 0, bytes.len(), 0), "se", Some("google"))
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the parent_entity parsed in Data"
+                .to_string()
+        );
+    }
+    #[test]
+    fn test_data_read_err_read_fail() {
+        let mut data = Data::new(FailingReader);
+        let err = data
+            .data_read(&("se".to_string(), 0, 10, 0), "se", Some("google"))
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Read);
+        assert!(err.message.contains("Failed to read data segment"));
+    }
+    #[test]
+    fn test_data_update_single() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_update(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap();
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n";
+        assert_eq!(
+            res,
+            (
+                "search_engines".to_string(),
+                bytes.len() + 1,
+                expected_bytes.len(),
+                1
+            )
+        );
+    }
+    #[test]
+    fn test_data_update_multiple() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_update(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                vec![
+                    (
+                        "search_engines".into(),
+                        "yahoo".to_string(),
+                        "https://www.yahoo.com".to_string(),
+                    ),
+                    (
+                        "search_engines".into(),
+                        "google".to_string(),
+                        "https://www.google.com".to_string(),
+                    ),
+                ],
+            )
+            .unwrap();
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nyahoo|https://www.yahoo.com\ngoogle|https://www.google.com\n";
+        assert_eq!(
+            res,
+            (
+                "search_engines".to_string(),
+                bytes.len() + 1,
+                expected_bytes.len(),
+                1
+            )
+        );
+    }
+    #[test]
+    fn test_data_update_err_corrupt_index_parent_and_function_caller_parent() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_update(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "se",
+                vec![(
+                    "se".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the provided parent_entity in the function call".to_string()
+        );
+    }
+    #[test]
+    fn test_data_update_err_corrupt_index_and_data_parent_mismatch() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_update(
+                &("se".to_string(), 0, bytes.len(), 0),
+                "se",
+                vec![(
+                    "se".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the parent_entity parsed in Data"
+                .to_string()
+        );
+    }
+    #[test]
+    fn test_data_update_err_not_found() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_update(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "bing".to_string(),
+                    "www.bing.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::NotFound);
+        assert_eq!(
+            err.message,
+            "The following link was not found: bing".to_string()
+        );
+    }
+    #[test]
+    fn test_data_update_err_read_fail() {
+        let mut data = Data::new(FailingReader);
+        let err = data
+            .data_update(
+                &("search_engines".to_string(), 0, 10, 0),
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Read);
+        assert!(err.message.contains("Failed to read data segment"));
+    }
+    #[test]
+    fn test_data_update_err_write_fail() {
+        let mut data = Data::new(FailingWriter::new(
+            b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n".to_vec(),
+        ));
+        let err = data
+            .data_update(
+                &("search_engines".to_string(), 0, 10, 0),
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "google".into(),
+                    "some_new_value".into(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
+    #[test]
+    fn test_data_update_partial_err_missing_one_of_links() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_update(
+                &("search_engines".to_string(), 0, bytes.len(), 0),
+                "search_engines",
+                vec![
+                    (
+                        "search_engines".into(),
+                        "yahoo".to_string(),
+                        "https://www.yahoo.com".to_string(),
+                    ),
+                    (
+                        "search_engines".into(),
+                        "duckduckgo".to_string(),
+                        "https://www.duckduckgo.com".to_string(),
+                    ),
+                ],
+            )
+            .unwrap();
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nyahoo|https://www.yahoo.com\ngoogle|www.google.com\n";
+        assert_eq!(
+            res,
+            (
+                "search_engines".to_string(),
+                bytes.len() + 1,
+                expected_bytes.len(),
+                1
+            )
+        );
+        // TODO: should there be a partial error message check or some result that surfaces partial errors?
+    }
+    #[test]
+    fn test_data_upsert_single_existing_link() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_upsert(
+                Some(&("search_engines".to_string(), 0, bytes.len(), 0)),
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap();
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nyahoo|https://www.yahoo.com\ngoogle|www.google.com\n";
+        assert_eq!(
+            res,
+            (
+                "search_engines".to_string(),
+                bytes.len() + 1,
+                expected_bytes.len(),
+                1
+            )
+        );
+    }
+    #[test]
+    fn test_data_upsert_single_new_parent_and_link() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_upsert(
+                None,
+                "news",
+                vec![("news".into(), "cnn".to_string(), "www.cnn.com".to_string())],
+            )
+            .unwrap();
+        let expected_bytes = b"news->\ncnn|www.cnn.com\n";
+        assert_eq!(
+            res,
+            ("news".to_string(), bytes.len() + 1, expected_bytes.len(), 0)
+        );
+    }
+    #[test]
+    fn test_data_upsert_multiple_new_links() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_upsert(
+                Some(&("search_engines".to_string(), 0, bytes.len(), 0)),
+                "search_engines",
+                vec![
+                    (
+                        "search_engines".into(),
+                        "brave".to_string(),
+                        "www.brave.com".to_string(),
+                    ),
+                    (
+                        "search_engines".into(),
+                        "duckduckgo".to_string(),
+                        "www.duckduckgo.com".to_string(),
+                    ),
+                ],
+            )
+            .unwrap();
+        let expected_bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\nbrave|www.brave.com\nduckduckgo|www.duckduckgo.com\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        assert_eq!(
+            res,
+            (
+                "search_engines".to_string(),
+                bytes.len() + 1,
+                expected_bytes.len(),
+                1
+            )
+        );
+    }
+    #[test]
+    fn test_data_upsert_err_corrupt_index_parent_and_function_caller_parent() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_upsert(
+                Some(&("search_engines".to_string(), 0, bytes.len(), 0)),
+                "se",
+                vec![(
+                    "se".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the provided parent_entity in the function call".to_string()
+        );
+    }
+    #[test]
+    fn test_data_upsert_err_corrupt_index_and_data_parent_mismatch() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_upsert(
+                Some(&("se".to_string(), 0, bytes.len(), 0)),
+                "se",
+                vec![(
+                    "se".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the parent_entity parsed in Data"
+                .to_string()
+        );
+    }
+    #[test]
+    fn test_data_upsert_err_read_fail() {
+        let mut data = Data::new(FailingReader);
+        let err = data
+            .data_upsert(
+                None,
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "yahoo".to_string(),
+                    "https://www.yahoo.com".to_string(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Read);
+        assert!(err.message.contains("Failed to read data segment"));
+    }
+    #[test]
+    fn test_data_upsert_err_write_fail() {
+        let mut data = Data::new(FailingWriter::new(
+            b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n".to_vec(),
+        ));
+        let err = data
+            .data_upsert(
+                Some(&("search_engines".to_string(), 0, 10, 0)),
+                "search_engines",
+                vec![(
+                    "search_engines".into(),
+                    "google".into(),
+                    "some_new_value".into(),
+                )],
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
+    #[test]
+    fn test_data_delete_parent() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_delete(DeleteTarget::Parent {
+                parent_entity: "search_engines",
+            })
+            .unwrap();
+        assert_eq!(res, None)
+    }
+    #[test]
+    fn test_data_delete_link() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let res = data
+            .data_delete(DeleteTarget::Link {
+                idx: &("search_engines".to_string(), 0, bytes.len(), 0),
+                parent_entity: "search_engines",
+                link: "google",
+            })
+            .unwrap();
+        let expected_bytes = b"search_engines->\nyahoo|www.yahoo.com\n";
+        assert_eq!(
+            res,
+            Some((
+                "search_engines".to_string(),
+                bytes.len(),
+                expected_bytes.len(),
+                1
+            ))
+        )
+    }
+    #[test]
+    fn test_data_delete_err_corrupt_index_parent_and_function_caller_parent() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_delete(DeleteTarget::Link {
+                idx: &("se".to_string(), 0, bytes.len(), 0),
+                parent_entity: "search_engines",
+                link: "bing",
+            })
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Corrupt);
+        assert_eq!(
+            err.message,
+            "The parent_entity from Index does not match the provided parent_entity in the function call".to_string()
+        );
+    }
+    #[test]
+    fn test_data_delete_err_not_found() {
+        let bytes = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n";
+        let mut data = Data::new(Cursor::new(bytes.to_vec()));
+        let err = data
+            .data_delete(DeleteTarget::Link {
+                idx: &("search_engines".to_string(), 0, bytes.len(), 0),
+                parent_entity: "search_engines",
+                link: "bing",
+            })
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::NotFound);
+        assert_eq!(
+            err.message,
+            "The following link was not found: bing".to_string()
+        );
+    }
+    #[test]
+    fn test_data_delete_err_read_fail() {
+        let mut data = Data::new(FailingReader);
+        let err = data
+            .data_delete(DeleteTarget::Link {
+                idx: &("search_engines".to_string(), 0, 10, 0),
+                parent_entity: "search_engines",
+                link: "yahoo",
+            })
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Read);
+        assert!(err.message.contains("Failed to read data segment"));
+    }
+    #[test]
+    fn test_data_delete_err_write_fail() {
+        let mut data = Data::new(FailingWriter::new(
+            b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\n".to_vec(),
+        ));
+        let err = data
+            .data_delete(DeleteTarget::Parent {
+                parent_entity: "some_parent",
+            })
+            .unwrap_err();
+        assert_eq!(err.kind, DataErrorKind::Write);
+        assert!(
+            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
+        );
+    }
     #[test]
     fn test_data_compact_() {}
 }
