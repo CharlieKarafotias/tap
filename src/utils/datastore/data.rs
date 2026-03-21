@@ -77,13 +77,13 @@ impl<RW: Read + Write + Seek> Data<RW> {
         let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
         let mut data = parse_data_segment(&text)?;
 
-        if data.len() > 0 {
-            if &data[0].0 != parent || data[0].0 != parent_entity {
-                return Err(DataError {
-                    kind: DataErrorKind::Corrupt,
-                    message: "The parent_entity from Index does not match the parent_entity parsed in Data".into(),
-                });
-            }
+        if !data.is_empty() && (&data[0].0 != parent || data[0].0 != parent_entity) {
+            return Err(DataError {
+                kind: DataErrorKind::Corrupt,
+                message:
+                    "The parent_entity from Index does not match the parent_entity parsed in Data"
+                        .into(),
+            });
         }
 
         if let Some(link) = link {
@@ -129,13 +129,13 @@ impl<RW: Read + Write + Seek> Data<RW> {
         let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
         let mut data = parse_data_segment(&text)?;
 
-        if data.len() > 0 {
-            if &data[0].0 != parent || data[0].0 != parent_entity {
-                return Err(DataError {
-                    kind: DataErrorKind::Corrupt,
-                    message: "The parent_entity from Index does not match the parent_entity parsed in Data".into(),
-                });
-            }
+        if !data.is_empty() && (&data[0].0 != parent || data[0].0 != parent_entity) {
+            return Err(DataError {
+                kind: DataErrorKind::Corrupt,
+                message:
+                    "The parent_entity from Index does not match the parent_entity parsed in Data"
+                        .into(),
+            });
         }
 
         let mut links_not_found = vec![];
@@ -194,13 +194,11 @@ impl<RW: Read + Write + Seek> Data<RW> {
                 let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
                 let mut data = parse_data_segment(&text)?;
 
-                if !data.is_empty() {
-                    if &data[0].0 != parent || data[0].0 != parent_entity {
-                        return Err(DataError {
+                if !data.is_empty() && (&data[0].0 != parent || data[0].0 != parent_entity) {
+                    return Err(DataError {
                         kind: DataErrorKind::Corrupt,
                         message: "The parent_entity from Index does not match the parent_entity parsed in Data".into(),
                     });
-                    }
                 }
 
                 for (parent, link_name, link_value) in updates {
@@ -409,6 +407,7 @@ fn append_line<RW: Read + Write + Seek>(
 /// Parses a data segment from buf of bytes into the D format (data type format)
 ///
 /// Errors:
+///
 ///    - Corrupt: the current data segment provided by Index was not the expected format
 ///    - Parse: the current data segment is not parsable into a data type format
 fn parse_data_segment(text: &str) -> Result<Vec<D>, DataError> {
@@ -429,7 +428,7 @@ fn parse_data_segment(text: &str) -> Result<Vec<D>, DataError> {
         .trim();
 
     let data: Vec<D> = lines
-        .map(|line| parse_data_line(&parent_entity, line))
+        .map(|line| parse_data_line(parent_entity, line))
         .collect::<Result<_, _>>()?;
 
     if data.is_empty() {
@@ -444,8 +443,9 @@ fn parse_data_segment(text: &str) -> Result<Vec<D>, DataError> {
 /// A helper function that parses a data line into type D
 ///
 /// Errors:
+///
 ///    - Parse: the line segment provided was invalid (missing '|' separator or missing link or
-///    value
+///      value
 fn parse_data_line(parent: &str, line: &str) -> Result<D, DataError> {
     let (link, value) = line.split_once('|').ok_or_else(|| DataError {
         kind: DataErrorKind::Parse,
@@ -496,7 +496,6 @@ fn write_d_as_string(
 // Errors
 #[derive(Debug, PartialEq)]
 pub(super) enum DataErrorKind {
-    AlreadyExists,
     Corrupt,
     NotFound,
     Parse,
@@ -519,7 +518,6 @@ impl fmt::Display for DataError {
 impl fmt::Display for DataErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            DataErrorKind::AlreadyExists => write!(f, "Data already exists"),
             DataErrorKind::Corrupt => {
                 write!(f, "Data & Index files drifted - Data file corrupted")
             }

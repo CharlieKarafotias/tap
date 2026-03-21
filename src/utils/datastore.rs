@@ -17,13 +17,6 @@ pub enum ImportExportType {
 }
 
 pub trait DS {
-    /// TODO: if wanted in future - this could be an option specified on CLI
-    // fn add_link(
-    //     &mut self,
-    //     parent_entity: String,
-    //     link_name: String,
-    //     value: String,
-    // ) -> Result<(), DataStoreError>;
     fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError>;
     fn import(
         &mut self,
@@ -52,17 +45,6 @@ pub struct Datastore<RW: Read + Write + Seek> {
 }
 
 impl<RW: Read + Write + Seek> DS for Datastore<RW> {
-    // TODO: if wanted in future - this could be an option specified on CLI
-    /// Adds a link to the data store without overwriting the link if it already exists.
-    // fn add_link(
-    //     &mut self,
-    //     parent_entity: String,
-    //     link_name: String,
-    //     value: String,
-    // ) -> Result<(), DataStoreError> {
-    //     todo!()
-    // }
-
     fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError> {
         match (parent_entity, link) {
             (p, None) => {
@@ -170,18 +152,20 @@ impl Datastore<fs::File> {
         let index_path = path.join("tap_index.txt");
         let data_path = path.join("tap_data.txt");
 
-        // Check for existance of Tap directory (if it doesn't exist, create it)
+        // Check for existence of Tap directory (if it doesn't exist, create it)
         fs::create_dir_all(&path)?;
 
         let data_file = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(data_path)?;
         let index_file = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
+            .truncate(false)
             .open(index_path)?;
 
         Ok(Datastore {
@@ -193,7 +177,7 @@ impl Datastore<fs::File> {
 
 #[cfg(test)]
 impl<RW: Read + Write + Seek> Datastore<RW> {
-    fn new_in_memory(data: RW, index: RW) -> Self {
+    pub fn new_in_memory(data: RW, index: RW) -> Self {
         Datastore {
             d: Data::new(data),
             i: Index::new(index),
@@ -264,5 +248,132 @@ impl From<std::io::Error> for DataStoreError {
             kind: DataStoreErrorKind::OS,
             message: err.to_string(),
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn setup() -> Datastore<Cursor<Vec<u8>>> {
+        Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]))
+    }
+
+    #[test]
+    fn test_upsert_new_parent() {
+        let mut ds = setup();
+
+        ds.upsert_link(
+            "search".to_string(),
+            "google".to_string(),
+            "https://google.com".to_string(),
+        )
+        .unwrap();
+
+        let res = ds.read_parent("search").unwrap();
+
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].1, "google");
+        assert_eq!(res[0].2, "https://google.com");
+    }
+
+    #[test]
+    fn test_upsert_existing_link_updates_value() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "old".into())
+            .unwrap();
+
+        ds.upsert_link("search".into(), "google".into(), "new".into())
+            .unwrap();
+
+        let res = ds.read_parent("search").unwrap();
+
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].2, "new");
+    }
+
+    #[test]
+    fn test_read_link_success() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "g".into())
+            .unwrap();
+        ds.upsert_link("search".into(), "yahoo".into(), "y".into())
+            .unwrap();
+
+        let res = ds.read_link("search", "yahoo").unwrap();
+
+        assert_eq!(res.1, "yahoo");
+        assert_eq!(res.2, "y");
+    }
+
+    #[test]
+    fn test_read_link_not_found() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "g".into())
+            .unwrap();
+
+        let err = ds.read_link("search", "bing").unwrap_err();
+
+        assert_eq!(err.kind, DataStoreErrorKind::Data);
+    }
+
+    #[test]
+    fn test_parents() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "g".into())
+            .unwrap();
+        ds.upsert_link("social".into(), "twitter".into(), "t".into())
+            .unwrap();
+
+        let mut parents = ds.parents().unwrap();
+        parents.sort();
+
+        assert_eq!(parents, vec!["search".to_string(), "social".to_string()]);
+    }
+
+    #[test]
+    fn test_delete_parent() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "g".into())
+            .unwrap();
+
+        ds.delete("search", None).unwrap();
+
+        let err = ds.read_parent("search").unwrap_err();
+        assert_eq!(err.kind, DataStoreErrorKind::Index);
+    }
+
+    #[test]
+    fn test_delete_link() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "g".into())
+            .unwrap();
+        ds.upsert_link("search".into(), "yahoo".into(), "y".into())
+            .unwrap();
+
+        ds.delete("search", Some("google")).unwrap();
+
+        let res = ds.read_parent("search").unwrap();
+
+        assert_eq!(res.len(), 1);
+        assert_eq!(res[0].1, "yahoo");
+    }
+
+    #[test]
+    fn test_delete_missing_link_errors() {
+        let mut ds = setup();
+
+        ds.upsert_link("search".into(), "google".into(), "g".into())
+            .unwrap();
+
+        let err = ds.delete("search", Some("bing")).unwrap_err();
+
+        assert_eq!(err.kind, DataStoreErrorKind::Data);
     }
 }

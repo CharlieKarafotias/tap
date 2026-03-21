@@ -3,10 +3,10 @@ mod utils;
 mod zsh;
 
 use crate::{
-    commands::{Command, CommandResult},
-    utils::cli_usage_table::DisplayCommandAsRow,
+    commands::{Command, CommandInfo, CommandResult},
+    utils::{cli_usage_table::DisplayCommandAsRow, datastore::Datastore},
 };
-
+use std::io::{Read, Seek, Write};
 use utils::{Shell, determine_user_shell};
 use zsh::update_zshrc;
 
@@ -26,7 +26,7 @@ impl Default for Init {
     }
 }
 
-impl Command for Init {
+impl CommandInfo for Init {
     fn error_message(&self) -> String {
         "invalid arguments, see the Usage section with tap --init --help".to_string()
     }
@@ -52,8 +52,14 @@ impl Command for Init {
         );
         s
     }
+}
 
-    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+impl<RW: Read + Write + Seek> Command<RW> for Init {
+    fn run<I: Iterator<Item = String>>(
+        &self,
+        mut args: I,
+        _ds: Datastore<RW>,
+    ) -> Result<CommandResult, String> {
         let arg1 = args.next();
 
         match arg1.as_deref() {
@@ -97,30 +103,25 @@ impl DisplayCommandAsRow for Init {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // #[test]
-    // #[should_panic] // TODO: remove after implementing init functionality
-    // fn test_init_run_expected_args() {
-    //     let cmd = Init::default();
-    //     let args: Vec<String> = vec![];
-    //     let res = cmd.run(args);
-    // }
+    use std::io::Cursor;
 
     #[test]
     fn test_init_run_expected_help_arg() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["--help".to_string()].into_iter();
         let cmd = Init::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_init_run_unexpected_args() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["random".to_string()].into_iter();
         let cmd = Init::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 }

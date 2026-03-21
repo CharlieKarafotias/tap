@@ -1,13 +1,14 @@
-use std::{
-    env::Args,
-    io::{Write, stderr, stdout},
-    iter::Peekable,
-};
-
 use super::commands::{
     Command, CommandResult, add::Add, delete::Delete, export::Export, help::Help, here::Here,
     import::Import, init::Init, parent_entity::ParentEntity, show::Show, upsert::Upsert,
     version::Version,
+};
+use crate::utils::{datastore::Datastore, os_implementations::RealLinkOpener};
+use std::{
+    env::Args,
+    fs::File,
+    io::{Read, Seek, Write, stderr, stdout},
+    iter::Peekable,
 };
 
 struct Context<WOut: Write, WErr: Write> {
@@ -24,34 +25,38 @@ impl<WOut: Write, WErr: Write> Context<WOut, WErr> {
     }
 }
 
-fn dispatch<C>(mut args: Peekable<Args>) -> Result<CommandResult, String>
+fn dispatch<C, RW>(mut args: Peekable<Args>, ds: Datastore<RW>) -> Result<CommandResult, String>
 where
-    C: Command + Default,
+    RW: Read + Write + Seek,
+    C: Command<RW> + Default,
 {
     if C::consumes_arg() {
         args.next();
     }
-    C::default().run(args)
+    C::default().run(args, ds)
 }
 
 fn run(mut args: Peekable<Args>) -> Result<CommandResult, String> {
+    // Dispatch called in production so use file datastore
+    let ds: Datastore<File> = Datastore::new().map_err(|e| e.to_string())?;
+
     match args.peek().map(String::as_str) {
-        None => dispatch::<Help>(args),
+        None => dispatch::<Help, File>(args, ds),
         // General:
-        Some("--help") => dispatch::<Help>(args),
-        Some("-v") | Some("--version") => dispatch::<Version>(args),
+        Some("--help") => dispatch::<Help, File>(args, ds),
+        Some("-v") | Some("--version") => dispatch::<Version, File>(args, ds),
         // Utilities:
-        Some("-i") | Some("--init") => dispatch::<Init>(args),
-        Some("--import") => dispatch::<Import>(args),
-        Some("--export") => dispatch::<Export>(args),
+        Some("-i") | Some("--init") => dispatch::<Init, File>(args, ds),
+        Some("--import") => dispatch::<Import, File>(args, ds),
+        Some("--export") => dispatch::<Export, File>(args, ds),
         // Adding, Updating, and Deleting Links:
-        Some("-a") | Some("--add") => dispatch::<Add>(args),
-        Some("-d") | Some("--delete") => dispatch::<Delete>(args),
-        Some("-s") | Some("--show") => dispatch::<Show>(args),
-        Some("-u") | Some("--upsert") => dispatch::<Upsert>(args),
+        Some("-a") | Some("--add") => dispatch::<Add, File>(args, ds),
+        Some("-d") | Some("--delete") => dispatch::<Delete, File>(args, ds),
+        Some("-s") | Some("--show") => dispatch::<Show, File>(args, ds),
+        Some("-u") | Some("--upsert") => dispatch::<Upsert, File>(args, ds),
         // Opening links:
-        Some("here") => dispatch::<Here>(args),
-        Some(_parent_entity) => dispatch::<ParentEntity>(args),
+        Some("here") => dispatch::<Here<RealLinkOpener>, File>(args, ds),
+        Some(_parent_entity) => dispatch::<ParentEntity<RealLinkOpener>, File>(args, ds),
     }
 }
 

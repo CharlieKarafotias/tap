@@ -1,10 +1,11 @@
 use crate::{
-    commands::{Command, CommandResult},
+    commands::{Command, CommandInfo, CommandResult},
     utils::{
         cli_usage_table::DisplayCommandAsRow,
         datastore::{DS, Datastore, ImportExportType},
     },
 };
+use std::io::{Read, Seek, Write};
 use std::path::PathBuf;
 
 pub(crate) struct Import {
@@ -31,7 +32,7 @@ impl Import {
     }
 }
 
-impl Command for Import {
+impl CommandInfo for Import {
     fn error_message(&self) -> String {
         "expected 2 arguments, see the Usage section with tap --import --help".to_string()
     }
@@ -42,8 +43,14 @@ impl Command for Import {
             "tap --import <Browser | Tap> <bookmark file>"
         )
     }
+}
 
-    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+impl<RW: Read + Write + Seek> Command<RW> for Import {
+    fn run<I: Iterator<Item = String>>(
+        &self,
+        mut args: I,
+        mut ds: Datastore<RW>,
+    ) -> Result<CommandResult, String> {
         let arg1 = args.next();
         let arg2 = args.next();
         let arg3 = args.next();
@@ -54,7 +61,6 @@ impl Command for Import {
                 "TODO: Implement import functionality from Browser: {f}"
             ))),
             (Some("Tap"), Some(f), None) => {
-                let mut ds = Datastore::new().map_err(|e| e.to_string())?;
                 ds.import(PathBuf::from(f), ImportExportType::Tap)
                     .map_err(|e| e.to_string())?;
                 Ok(CommandResult::Value("Import complete".to_string()))
@@ -81,53 +87,59 @@ impl DisplayCommandAsRow for Import {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use super::*;
 
     #[test]
     fn test_import_expected_help_arg() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["--help".to_string()].into_iter();
         let cmd = Import::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_unexpected_args() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["random".to_string()].into_iter();
         let cmd = Import::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_run_bad_browser() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["bad browser".to_string(), "path".to_string()].into_iter();
         let cmd = Import::default();
         let expected: Result<CommandResult, String> = Err(cmd.bad_type_message("bad browser"));
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_import_run_browser() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let cmd = Import::default();
         let args = vec!["Browser".to_string(), "test.html".to_string()].into_iter();
         let expected = CommandResult::Value(
             "TODO: Implement import functionality from Browser: test.html".to_string(),
         );
-        let res = cmd.run(args).expect("Could not display import");
+        let res = cmd.run(args, ds).expect("Could not display import");
         assert_eq!(res, expected);
     }
 
     #[test]
-    #[ignore = "GH-45: Should be an integration test due to DataStore dependency"]
     fn test_import_run_tap() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let cmd = Import::default();
         let args = vec!["Tap".to_string(), "./test.tap".to_string()].into_iter();
         let expected = CommandResult::Value("Import complete".to_string());
-        let res = cmd.run(args).expect("Could not display import");
+        let res = cmd.run(args, ds).expect("Could not display import");
         assert_eq!(res, expected);
     }
 }

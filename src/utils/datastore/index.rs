@@ -47,58 +47,6 @@ impl<RW: Read + Write + Seek> Index<RW> {
     pub fn new(buf: RW) -> Self {
         Index { buf }
     }
-    /// Create new indexes
-    ///
-    /// NOTE: this is slower than idx_upsert as a check for the existance of the index(es) provided
-    /// is performed prior to creating the indexes. If you do not need to check for existance, use
-    /// idx_upsert.
-    ///
-    /// Errors:
-    ///     - `AlreadyExists`: one or more of the indexes specified already exists in the Index structure (the indexes listed in the error were not added to the Index structure)
-    ///     - `Write`: a write operation to the Index failed
-    pub fn idx_create(&mut self, entries: Vec<Idx>) -> Result<(), IndexError> {
-        let mut parents = self.idx_parents()?;
-        let mut err_parent_already_exist: Vec<String> = Vec::with_capacity(entries.len());
-
-        let mut to_write: Vec<String> = Vec::new();
-
-        for entry in entries {
-            if !parents.insert(entry.0.clone()) {
-                err_parent_already_exist.push(entry.0);
-            } else {
-                to_write.push(format!("{}|{}|{}|{}", entry.0, entry.1, entry.2, entry.3));
-            }
-        }
-
-        if !to_write.is_empty() {
-            let mut w = BufWriter::new(&mut self.buf);
-            w.seek(SeekFrom::End(0)).map_err(|e| IndexError {
-                kind: IndexErrorKind::Write,
-                message: format!("Failed to seek to end: {e}"),
-            })?;
-            for line in to_write {
-                writeln!(w, "{line}").map_err(|e| IndexError {
-                    kind: IndexErrorKind::Write,
-                    message: format!("Failed to write line {line}: {e}"),
-                })?;
-            }
-            w.flush().map_err(|e| IndexError {
-                kind: IndexErrorKind::Write,
-                message: format!("Flush failed: {e}"),
-            })?;
-        }
-
-        if !err_parent_already_exist.is_empty() {
-            Err(IndexError {
-                kind: IndexErrorKind::AlreadyExists,
-                message: format!(
-                    "The following indexes already exist and therefore were not added: {err_parent_already_exist:?}"
-                ),
-            })
-        } else {
-            Ok(())
-        }
-    }
     /// Reads an index from the Index file
     ///
     /// Errors:
@@ -341,7 +289,6 @@ fn parse_line(line: &str) -> Result<IndexType, IndexError> {
 // Errors
 #[derive(Debug, PartialEq)]
 pub(super) enum IndexErrorKind {
-    AlreadyExists,
     NotFound,
     Parse,
     Read,
@@ -363,7 +310,6 @@ impl fmt::Display for IndexError {
 impl fmt::Display for IndexErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            IndexErrorKind::AlreadyExists => write!(f, "Index already exists"),
             IndexErrorKind::NotFound => write!(f, "Index not found"),
             IndexErrorKind::Read => write!(f, "Index read failed"),
             IndexErrorKind::Parse => write!(f, "Index file structure corrupted"),
@@ -493,77 +439,6 @@ mod ds_index_tests_public_api {
         }
     }
 
-    #[test]
-    fn test_create_index_stores_an_index() {
-        let mut idx = Index::new(Cursor::new(Vec::new()));
-        idx.idx_create(vec![("some_parent".to_string(), 1, 2, 3)])
-            .unwrap();
-        let bytes = idx.buf.get_ref();
-        let res = std::str::from_utf8(bytes).unwrap();
-        assert_eq!(res, "some_parent|1|2|3\n");
-    }
-    #[test]
-    fn test_create_multiple_indexes() {
-        let mut idx = Index::new(Cursor::new(Vec::new()));
-        idx.idx_create(vec![
-            ("another_parent".to_string(), 4, 5, 6),
-            ("some_parent".to_string(), 1, 2, 3),
-        ])
-        .unwrap();
-        let bytes = idx.buf.get_ref();
-        let res = std::str::from_utf8(bytes).unwrap();
-        assert_eq!(res, "another_parent|4|5|6\nsome_parent|1|2|3\n");
-    }
-    #[test]
-    fn test_create_index_of_existing_errors_already_exists() {
-        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
-        let result = idx
-            .idx_create(vec![("another_parent".to_string(), 7, 8, 9)])
-            .unwrap_err();
-        assert_eq!(
-            result,
-            IndexError {
-                kind: IndexErrorKind::AlreadyExists,
-                message: "The following indexes already exist and therefore were not added: [\"another_parent\"]".to_string()
-            }
-        );
-        let bytes = idx.buf.get_ref();
-        let res = std::str::from_utf8(bytes).unwrap();
-        assert_eq!(res, "another_parent|4|5|6\n");
-    }
-    #[test]
-    fn test_create_indexes_partial_success_with_error_already_exists() {
-        let mut idx = Index::new(Cursor::new(b"another_parent|4|5|6\n".to_vec()));
-        let result = idx
-            .idx_create(vec![
-                ("another_parent".to_string(), 3, 2, 1),
-                ("some_parent".to_string(), 1, 2, 3),
-            ])
-            .unwrap_err();
-        assert_eq!(
-            result,
-            IndexError {
-                kind: IndexErrorKind::AlreadyExists,
-                message: "The following indexes already exist and therefore were not added: [\"another_parent\"]".to_string()
-            }
-        );
-        let bytes = idx.buf.get_ref();
-        let res = std::str::from_utf8(bytes).unwrap();
-        assert_eq!(res, "another_parent|4|5|6\nsome_parent|1|2|3\n");
-    }
-    #[test]
-    fn test_create_index_with_write_failure_returns_write_error() {
-        let mut idx = Index::new(FailingWriter::new(vec![]));
-
-        let err = idx
-            .idx_create(vec![("some_parent".to_string(), 1, 2, 3)])
-            .unwrap_err();
-
-        assert_eq!(err.kind, IndexErrorKind::Write);
-        assert!(
-            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
-        );
-    }
     #[test]
     fn test_read_index_returns_an_index() {
         let mut idx = Index::new(Cursor::new(b"some_parent|4|5|6\n".to_vec()));

@@ -1,5 +1,11 @@
-use super::utils::cli_usage_table::{Row, UsageTableBuilder};
-use std::fmt::{Display, Formatter};
+use super::utils::{
+    cli_usage_table::{Row, UsageTableBuilder},
+    datastore::Datastore,
+};
+use std::{
+    fmt::{Display, Formatter},
+    io::{Read, Seek, Write},
+};
 
 pub(super) mod add;
 pub(super) mod delete;
@@ -26,13 +32,20 @@ impl Display for CommandResult {
     }
 }
 
-pub(super) trait Command {
+pub(super) trait Command<RW: Read + Write + Seek> {
     fn consumes_arg() -> bool {
         true
     }
+    fn run<I: Iterator<Item = String>>(
+        &self,
+        parsed_args: I,
+        ds: Datastore<RW>,
+    ) -> Result<CommandResult, String>;
+}
+
+pub(super) trait CommandInfo {
     fn error_message(&self) -> String;
     fn help_message(&self) -> String;
-    fn run<I: Iterator<Item = String>>(&self, parsed_args: I) -> Result<CommandResult, String>;
 }
 
 // Utility Messages used across commands

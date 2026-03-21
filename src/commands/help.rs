@@ -1,7 +1,8 @@
 use crate::{
-    commands::{Command, CommandResult, display_commands, display_version},
-    utils::cli_usage_table::DisplayCommandAsRow,
+    commands::{Command, CommandInfo, CommandResult, display_commands, display_version},
+    utils::{cli_usage_table::DisplayCommandAsRow, datastore::Datastore},
 };
+use std::io::{Read, Seek, Write};
 
 pub(crate) struct Help {
     name: String,
@@ -19,7 +20,7 @@ impl Default for Help {
     }
 }
 
-impl Command for Help {
+impl CommandInfo for Help {
     fn error_message(&self) -> String {
         "too many arguments, see the Usage section with tap --help".to_string()
     }
@@ -32,8 +33,14 @@ impl Command for Help {
             display_commands(),
         )
     }
+}
 
-    fn run<I: Iterator<Item = String>>(&self, mut args: I) -> Result<CommandResult, String> {
+impl<RW: Read + Write + Seek> Command<RW> for Help {
+    fn run<I: Iterator<Item = String>>(
+        &self,
+        mut args: I,
+        _ds: Datastore<RW>,
+    ) -> Result<CommandResult, String> {
         if args.next().is_some() {
             Err(self.error_message())
         } else {
@@ -58,23 +65,27 @@ impl DisplayCommandAsRow for Help {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use super::*;
 
     #[test]
     fn test_help_unexpected_args() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["--help".to_string(), "me".to_string()].into_iter();
         let cmd = Help::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 
     #[test]
     fn test_help_run() {
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec![].into_iter();
         let cmd = Help::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
-        let res = cmd.run(args);
+        let res = cmd.run(args, ds);
         assert_eq!(res, expected);
     }
 }
