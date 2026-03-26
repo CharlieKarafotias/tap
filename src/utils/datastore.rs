@@ -80,10 +80,36 @@ impl<RW: Read + Write + Seek> DS for Datastore<RW> {
 
     fn export(
         &mut self,
-        path: PathBuf,
+        mut path: PathBuf,
         export_type: ImportExportType,
     ) -> Result<String, DataStoreError> {
-        todo!()
+        match export_type {
+            ImportExportType::Browser => {
+                todo!()
+            }
+            ImportExportType::Tap => {
+                if path.is_dir() {
+                    path = path.join("export.tap");
+                }
+
+                // TODO: instead of a copy, should work with abstract RW and write the contents to
+                // file. Instead we should get string of all data and then write that structure to
+                // path.
+                // Operation:
+                // 1. Run data_compact
+                // 2. Ensure formatted file (link|values are 2 spaces indented
+                // 3. call export in data.rs which produces a string OR provide path and do OS file
+                //    call in export of data.rs (decide which makes most sense)
+                fs::copy(get_path_data()?, &path).map_err(|e| DataStoreError {
+                    kind: DataStoreErrorKind::OS,
+                    message: format!(
+                        "Could not create Tap export file to {}: {e}",
+                        path.display()
+                    ),
+                })?;
+            }
+        }
+        Ok(path.display().to_string())
     }
 
     fn import(
@@ -148,12 +174,15 @@ impl<RW: Read + Write + Seek> DS for Datastore<RW> {
 
 impl Datastore<fs::File> {
     pub fn new() -> Result<Self, DataStoreError> {
-        let path = derive_data_local_dir_by_os("dev", "CharlieKarafotias", "Tap")?;
-        let index_path = path.join("tap_index.txt");
-        let data_path = path.join("tap_data.txt");
+        let index_path = get_path_index()?;
+        let data_path = get_path_data()?;
 
         // Check for existence of Tap directory (if it doesn't exist, create it)
-        fs::create_dir_all(&path)?;
+        fs::create_dir_all(derive_data_local_dir_by_os(
+            "dev",
+            "CharlieKarafotias",
+            "Tap",
+        )?)?;
 
         let data_file = fs::OpenOptions::new()
             .read(true)
@@ -183,6 +212,50 @@ impl<RW: Read + Write + Seek> Datastore<RW> {
             i: Index::new(index),
         }
     }
+
+    pub fn get_path_index() -> Result<PathBuf, DataStoreError> {
+        Ok(PathBuf::from("tap_index.txt"))
+    }
+
+    pub fn get_path_data() -> Result<PathBuf, DataStoreError> {
+        Ok(PathBuf::from("tap_data.txt"))
+    }
+}
+
+/// Returns the path to index file of Tap's datastore
+///
+/// Paths:
+///   - Linux: `$XDG_DATA_HOME/Tap/tap_index.txt` OR `$HOME/.local/share/Tap/tap_index.txt`
+///   - macOS: `$HOME/Library/Application Support/dev.CharlieKarafotias.Tap/tap_index.txt`
+///   - Windows: `{FOLDERID_LocalAppData}\CharlieKarafotias\Tap\data\tap_index.txt`
+///
+/// Errors:
+/// - OsImplementationErrorKind::MissingEnvVar if the ENV for specific OS is not found
+/// - OsImplementationErrorKind::OsNotSupported if an OS other than Linux, macOS, or Windows is used
+fn get_path_index() -> Result<PathBuf, DataStoreError> {
+    if cfg!(test) {
+        return Ok(PathBuf::from("tap_index.txt"));
+    }
+    let path = derive_data_local_dir_by_os("dev", "CharlieKarafotias", "Tap")?;
+    Ok(path.join("tap_index.txt"))
+}
+
+/// Returns the path to data file of Tap's datastore
+///
+/// Paths:
+///   - Linux: `$XDG_DATA_HOME/Tap/tap_index.txt` OR `$HOME/.local/share/Tap/tap_data.txt`
+///   - macOS: `$HOME/Library/Application Support/dev.CharlieKarafotias.Tap/tap_data.txt`
+///   - Windows: `{FOLDERID_LocalAppData}\CharlieKarafotias\Tap\data\tap_data.txt`
+///
+/// Errors:
+/// - OsImplementationErrorKind::MissingEnvVar if the ENV for specific OS is not found
+/// - OsImplementationErrorKind::OsNotSupported if an OS other than Linux, macOS, or Windows is used
+fn get_path_data() -> Result<PathBuf, DataStoreError> {
+    if cfg!(test) {
+        return Ok(PathBuf::from("tap_data.txt"));
+    }
+    let path = derive_data_local_dir_by_os("dev", "CharlieKarafotias", "Tap")?;
+    Ok(path.join("tap_data.txt"))
 }
 
 // Errors

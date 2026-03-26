@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_export_run_expected_help_arg() {
-        let mut ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["--help".to_string()].into_iter();
         let cmd = Export::default();
         let expected: Result<CommandResult, String> = Ok(CommandResult::Value(cmd.help_message()));
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_export_run_unexpected_args() {
-        let mut ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["random".to_string()].into_iter();
         let cmd = Export::default();
         let expected: Result<CommandResult, String> = Err(cmd.error_message());
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_export_run_bad_browser() {
-        let mut ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let args = vec!["bad browser".to_string(), "path".to_string()].into_iter();
         let cmd = Export::default();
         let expected: Result<CommandResult, String> =
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_export_run_browser() {
-        let mut ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
         let cmd = Export::default();
         let args = vec!["Browser".to_string(), "test.html".to_string()].into_iter();
         let expected = CommandResult::Value(
@@ -156,16 +156,17 @@ mod tests {
 
     #[test]
     fn test_export_run_tap() {
-        let mut ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
+        let ds = Datastore::new_in_memory(Cursor::new(vec![]), Cursor::new(vec![]));
+        let current_dir = std::env::current_dir().unwrap();
+        let path = PathBuf::from(current_dir).join("test.tap");
         let cmd = Export::default();
-        let args = vec!["Tap".to_string(), "test.tap".to_string()].into_iter();
+        let args = vec!["Tap".to_string(), path.to_string_lossy().to_string()].into_iter();
         let expected =
             CommandResult::Value("Successfully exported Tap file to: test.tap".to_string());
         let res = cmd.run(args, ds).expect("Could not display export");
         assert_eq!(res, expected);
 
         // Clean up
-        let path = Path::new("test.tap");
         if path.exists() {
             fs::remove_file(path).expect("Could not remove test.tap");
         }
