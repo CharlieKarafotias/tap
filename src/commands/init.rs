@@ -4,7 +4,10 @@ mod zsh;
 
 use crate::{
     commands::{Command, CommandInfo, CommandResult},
-    utils::{cli_usage_table::DisplayCommandAsRow, datastore::Datastore},
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        datastore::{Datastore, Truncate},
+    },
 };
 use std::io::{Read, Seek, Write};
 use utils::{Shell, determine_user_shell};
@@ -54,7 +57,7 @@ impl CommandInfo for Init {
     }
 }
 
-impl<RW: Read + Write + Seek> Command<RW> for Init {
+impl<RW: Read + Write + Seek + Truncate> Command<RW> for Init {
     fn run<I: Iterator<Item = String>>(
         &self,
         mut args: I,

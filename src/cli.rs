@@ -3,7 +3,10 @@ use super::commands::{
     import::Import, init::Init, parent_entity::ParentEntity, show::Show, upsert::Upsert,
     version::Version,
 };
-use crate::utils::{datastore::Datastore, os_implementations::RealLinkOpener};
+use crate::utils::{
+    datastore::{Datastore, Truncate},
+    os_implementations::RealLinkOpener,
+};
 use std::{
     env::Args,
     fs::File,
@@ -27,7 +30,7 @@ impl<WOut: Write, WErr: Write> Context<WOut, WErr> {
 
 fn dispatch<C, RW>(mut args: Peekable<Args>, ds: Datastore<RW>) -> Result<CommandResult, String>
 where
-    RW: Read + Write + Seek,
+    RW: Read + Write + Seek + Truncate,
     C: Command<RW> + Default,
 {
     if C::consumes_arg() {

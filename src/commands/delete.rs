@@ -3,7 +3,7 @@ use crate::{
     utils::{
         cli_usage_table::DisplayCommandAsRow,
         command::get_current_directory_name,
-        datastore::{DS, Datastore},
+        datastore::{DS, Datastore, Truncate},
     },
 };
 use std::io::{Read, Seek, Write};
@@ -41,7 +41,7 @@ impl CommandInfo for Delete {
     }
 }
 
-impl<RW: Read + Write + Seek> Command<RW> for Delete {
+impl<RW: Read + Write + Seek + Truncate> Command<RW> for Delete {
     fn run<I: Iterator<Item = String>>(
         &self,
         mut args: I,

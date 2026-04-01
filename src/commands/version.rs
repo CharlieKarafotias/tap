@@ -1,6 +1,9 @@
 use crate::{
     commands::{Command, CommandInfo, CommandResult, display_version},
-    utils::{cli_usage_table::DisplayCommandAsRow, datastore::Datastore},
+    utils::{
+        cli_usage_table::DisplayCommandAsRow,
+        datastore::{Datastore, Truncate},
+    },
 };
 use std::io::{Read, Seek, Write};
 
@@ -33,7 +36,7 @@ impl CommandInfo for Version {
     }
 }
 
-impl<RW: Read + Write + Seek> Command<RW> for Version {
+impl<RW: Read + Write + Seek + Truncate> Command<RW> for Version {
     fn run<I: Iterator<Item = String>>(
         &self,
         mut args: I,

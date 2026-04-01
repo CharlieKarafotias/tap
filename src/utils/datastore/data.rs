@@ -1,3 +1,4 @@
+use super::Truncate;
 use super::index::Idx;
 use std::{
     fmt,
@@ -35,11 +36,11 @@ pub(super) enum DeleteTarget<'a> {
 ///     - Create/Upsert data entries
 ///     - Delete data entries
 ///     - Compact data representation
-pub(super) struct Data<RW: Read + Write + Seek> {
+pub(super) struct Data<RW: Read + Write + Seek + Truncate> {
     buf: RW,
 }
 
-impl<RW: Read + Write + Seek> Data<RW> {
+impl<RW: Read + Write + Seek + Truncate> Data<RW> {
     /// Creates a new `Data` representation. A Data representation is any type which implements the
     /// Read, Seek, and Write traits.
     ///
@@ -879,6 +880,12 @@ mod ds_data_tests_public_api {
             self.inner.read(buf)
         }
     }
+    impl Truncate for FailingWriter {
+        fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+            self.inner.truncate(len)
+        }
+    }
+
     struct FailingReader;
     impl Write for FailingReader {
         fn write(&mut self, _: &[u8]) -> io::Result<usize> {
@@ -897,6 +904,11 @@ mod ds_data_tests_public_api {
     impl Read for FailingReader {
         fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
             Err(io::Error::new(io::ErrorKind::Other, "forced read failure"))
+        }
+    }
+    impl Truncate for FailingReader {
+        fn truncate(&mut self, _len: u64) -> std::io::Result<()> {
+            Ok(())
         }
     }
 

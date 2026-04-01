@@ -1,6 +1,6 @@
 use super::utils::{
     cli_usage_table::{Row, UsageTableBuilder},
-    datastore::Datastore,
+    datastore::{Datastore, Truncate},
 };
 use std::{
     fmt::{Display, Formatter},
@@ -32,7 +32,7 @@ impl Display for CommandResult {
     }
 }
 
-pub(super) trait Command<RW: Read + Write + Seek> {
+pub(super) trait Command<RW: Read + Write + Seek + Truncate> {
     fn consumes_arg() -> bool {
         true
     }

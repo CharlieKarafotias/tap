@@ -1,5 +1,6 @@
+use super::Truncate;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fmt,
     io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
 };
@@ -30,11 +31,11 @@ enum IndexType {
 ///     - Upsert index(es)
 ///     - Delete index(es)
 ///     - Compact index representation
-pub(super) struct Index<RW: Read + Write + Seek> {
+pub(super) struct Index<RW: Read + Write + Seek + Truncate> {
     buf: RW,
 }
 
-impl<RW: Read + Write + Seek> Index<RW> {
+impl<RW: Read + Write + Seek + Truncate> Index<RW> {
     /// Creates a new `Index` representation. An Index representation is any type
     /// which implements the Read, Seek, and Write traits.
     ///
@@ -191,12 +192,75 @@ impl<RW: Read + Write + Seek> Index<RW> {
         })?;
         Ok(())
     }
-    /// Compacts the Index file by removing older generations
+    /// Compacts the Index file by removing older generations and tombstones
     ///
     /// Errors:
-    ///     - TODO
-    pub fn idx_compact() -> () {
-        todo!()
+    ///     - `Read`: the read operation of the Index file failed
+    pub fn idx_compact(&mut self) -> Result<(), IndexError> {
+        let mut map: HashMap<String, IndexType> = HashMap::new();
+        let mut reader = BufReader::new(&mut self.buf);
+        reader.seek(SeekFrom::Start(0)).map_err(|e| IndexError {
+            kind: IndexErrorKind::Read,
+            message: format!("Failed to seek to start: {e}"),
+        })?;
+        for line in reader.lines() {
+            let line = line.map_err(|e| IndexError {
+                kind: IndexErrorKind::Read,
+                message: format!("Line read failed - {e}"),
+            })?;
+            match parse_line(&line)? {
+                IndexType::Tombstone(parent) => map.remove(parent.as_str()),
+                IndexType::Entry(idx) => {
+                    // NOTE: assumption that reading top -> down results in higher generations when
+                    // same parent found. Might want to perform check in future if weird things
+                    // happen (check existing parent of map and IDX gen and take higher gen)
+                    map.insert(idx.0.clone(), IndexType::Entry(idx))
+                }
+            };
+        }
+        // Build new idx file in alphabetical order
+        let mut sorted: Vec<_> = map.iter().collect();
+        sorted.sort_by_key(|a| a.0);
+
+        // Clear entire buffer and write new lines
+        self.buf.truncate(0).map_err(|e| IndexError {
+            kind: IndexErrorKind::Write,
+            message: format!("Failed to truncate buffer: {e}"),
+        })?;
+        let mut writer = BufWriter::new(&mut self.buf);
+        writer.seek(SeekFrom::Start(0)).map_err(|e| IndexError {
+            kind: IndexErrorKind::Write,
+            message: format!("Failed to seek to start: {e}"),
+        })?;
+
+        for entry in sorted {
+            match entry {
+                (_, IndexType::Entry(entry)) => {
+                    writeln!(writer, "{}|{}|{}|{}", entry.0, entry.1, entry.2, entry.3).map_err(
+                        |e| IndexError {
+                            kind: IndexErrorKind::Write,
+                            message: format!(
+                                "Failed to write line {}|{}|{}|{}: {e}",
+                                entry.0, entry.1, entry.2, entry.3
+                            ),
+                        },
+                    )?;
+                }
+                (_, IndexType::Tombstone(parent)) => {
+                    return Err(IndexError {
+                        kind: IndexErrorKind::Write,
+                        message: format!(
+                            "Attempted write of tombstoned parent '{parent}' during idx_compact operation. This should never happen!"
+                        ),
+                    });
+                }
+            }
+        }
+        writer.flush().map_err(|e| IndexError {
+            kind: IndexErrorKind::Write,
+            message: format!("Flush failed: {e}"),
+        })?;
+        Ok(())
     }
 
     /// Retrieves the parent entities from the Index file
@@ -418,6 +482,12 @@ mod ds_index_tests_public_api {
             self.inner.read(buf)
         }
     }
+    impl Truncate for FailingWriter {
+        fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+            self.inner.truncate(len)
+        }
+    }
+
     struct FailingReader;
     impl Write for FailingReader {
         fn write(&mut self, _: &[u8]) -> io::Result<usize> {
@@ -436,6 +506,11 @@ mod ds_index_tests_public_api {
     impl Read for FailingReader {
         fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
             Err(io::Error::new(io::ErrorKind::Other, "forced read failure"))
+        }
+    }
+    impl Truncate for FailingReader {
+        fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+            Ok(())
         }
     }
 
@@ -669,6 +744,38 @@ mod ds_index_tests_public_api {
         let err = idx.idx_parents().unwrap_err();
         assert_eq!(err, expected);
     }
-
-    // TODO: add idx_compact tests here once implemented
+    #[test]
+    fn test_idx_compact_nothing_to_compact_returns_same_idx() {
+        let initial = b"another_parent|4|5|6\nsome_parent|1|2|3\nunknown|2|2|2\n".to_vec();
+        let mut idx = Index::new(Cursor::new(initial.clone()));
+        let before = idx.buf.get_ref().clone();
+        idx.idx_compact().unwrap();
+        let after = idx.buf.get_ref();
+        assert_eq!(&before, after);
+    }
+    #[test]
+    fn test_idx_compact_removes_old_generations_only_retains_new_ones() {
+        let initial = b"another_parent|4|5|0\nsome_parent|1|2|0\nanother_parent|2|2|1\n".to_vec();
+        let expected = b"another_parent|2|2|1\nsome_parent|1|2|0\n".to_vec();
+        let mut idx = Index::new(Cursor::new(initial.clone()));
+        idx.idx_compact().unwrap();
+        let after = idx.buf.get_ref();
+        assert_eq!(expected, *after);
+    }
+    #[test]
+    fn test_idx_compact_removes_idx_that_were_tombstoned() {
+        let initial = b"another_parent|4|5|0\nsome_parent|1|2|0\n-another_parent\n".to_vec();
+        let expected = b"some_parent|1|2|0\n".to_vec();
+        let mut idx = Index::new(Cursor::new(initial.clone()));
+        idx.idx_compact().unwrap();
+        let after = idx.buf.get_ref();
+        assert_eq!(expected, *after);
+    }
+    #[test]
+    fn test_idx_compact_err_read_failure() {
+        let mut idx = Index::new(FailingReader);
+        let err = idx.idx_compact().unwrap_err();
+        assert_eq!(err.kind, IndexErrorKind::Read);
+        assert!(err.message.contains("Line read failed"));
+    }
 }

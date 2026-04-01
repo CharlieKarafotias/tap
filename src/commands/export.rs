@@ -2,7 +2,7 @@ use crate::{
     commands::{Command, CommandInfo, CommandResult},
     utils::{
         cli_usage_table::DisplayCommandAsRow,
-        datastore::{DS, Datastore, ImportExportType},
+        datastore::{DS, Datastore, ImportExportType, Truncate},
     },
 };
 use std::io::{Read, Seek, Write};
@@ -48,7 +48,7 @@ impl CommandInfo for Export {
     }
 }
 
-impl<RW: Read + Write + Seek> Command<RW> for Export {
+impl<RW: Read + Write + Seek + Truncate> Command<RW> for Export {
     fn run<I: Iterator<Item = String>>(
         &self,
         mut args: I,

@@ -6,14 +6,32 @@ use data::{D, Data, DataError, DeleteTarget};
 use index::{Index, IndexError, IndexErrorKind};
 use std::{
     fmt::{self},
-    fs,
-    io::{Read, Seek, Write},
+    fs::{self, File},
+    io::{Cursor, Read, Seek, Write},
     path::PathBuf,
 };
 
 pub enum ImportExportType {
     Browser,
     Tap,
+}
+
+pub trait Truncate {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()>;
+}
+
+impl Truncate for Cursor<Vec<u8>> {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        let vec = self.get_mut();
+        vec.truncate(len as usize);
+        Ok(())
+    }
+}
+
+impl Truncate for File {
+    fn truncate(&mut self, len: u64) -> std::io::Result<()> {
+        self.set_len(len)
+    }
 }
 
 pub trait DS {
@@ -39,12 +57,12 @@ pub trait DS {
     ) -> Result<(), DataStoreError>;
 }
 
-pub struct Datastore<RW: Read + Write + Seek> {
+pub struct Datastore<RW: Read + Write + Seek + Truncate> {
     d: Data<RW>,
     i: Index<RW>,
 }
 
-impl<RW: Read + Write + Seek> DS for Datastore<RW> {
+impl<RW: Read + Write + Seek + Truncate> DS for Datastore<RW> {
     fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError> {
         match (parent_entity, link) {
             (p, None) => {
@@ -205,7 +223,7 @@ impl Datastore<fs::File> {
 }
 
 #[cfg(test)]
-impl<RW: Read + Write + Seek> Datastore<RW> {
+impl<RW: Read + Write + Seek + Truncate> Datastore<RW> {
     pub fn new_in_memory(data: RW, index: RW) -> Self {
         Datastore {
             d: Data::new(data),

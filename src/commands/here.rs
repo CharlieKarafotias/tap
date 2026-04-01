@@ -3,7 +3,7 @@ use crate::{
     utils::{
         cli_usage_table::DisplayCommandAsRow,
         command::get_current_directory_name,
-        datastore::{DS, Datastore},
+        datastore::{DS, Datastore, Truncate},
         os_implementations::{LinkOpener, RealLinkOpener},
     },
 };
@@ -55,7 +55,7 @@ impl<T: LinkOpener> CommandInfo for Here<T> {
     }
 }
 
-impl<RW: Read + Write + Seek, T: LinkOpener> Command<RW> for Here<T> {
+impl<RW: Read + Write + Seek + Truncate, T: LinkOpener> Command<RW> for Here<T> {
     fn run<I: Iterator<Item = String>>(
         &self,
         mut args: I,

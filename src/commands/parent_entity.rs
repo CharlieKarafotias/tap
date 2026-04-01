@@ -2,7 +2,7 @@ use crate::{
     commands::{Command, CommandInfo, CommandResult},
     utils::{
         cli_usage_table::DisplayCommandAsRow,
-        datastore::{DS, Datastore},
+        datastore::{DS, Datastore, Truncate},
         os_implementations::{LinkOpener, RealLinkOpener},
     },
 };
@@ -54,7 +54,7 @@ impl<T: LinkOpener> CommandInfo for ParentEntity<T> {
     }
 }
 
-impl<RW: Read + Write + Seek, T: LinkOpener> Command<RW> for ParentEntity<T> {
+impl<RW: Read + Write + Seek + Truncate, T: LinkOpener> Command<RW> for ParentEntity<T> {
     fn consumes_arg() -> bool {
         false
     }
