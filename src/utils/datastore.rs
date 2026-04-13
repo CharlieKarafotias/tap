@@ -35,6 +35,9 @@ impl Truncate for File {
 }
 
 pub trait DS {
+    // TODO: add compact func here (should run index_compact first, then pass the compacted Vec<Idx>
+    // to data_compact. Finally, on returned vec of Idx from data compact, update index file with
+    // new values)
     fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError>;
     fn import(
         &mut self,

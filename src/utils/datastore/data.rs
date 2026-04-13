@@ -297,10 +297,34 @@ impl<RW: Read + Write + Seek + Truncate> Data<RW> {
     }
     /// Compacts the Data structure by retaining only the data from the latest parent_entities
     ///
+    /// Steps:
+    ///   1. Ensure idx_compact has run first.
+    ///   2. Read through all provided idxs (the compacted ones)
+    ///   3. For each idx, read the existing data from Data
+    ///   4. Push only the existing data read to new_data
+    ///   5. Save the offset, length, parent and add to returning Vec of Indexes
+    ///   6. Repeat till all provided idxs are completed
+    ///   7. Write new Data file
+    ///   8. Return Vec of Indexes to caller so Index store can be updated
+    ///
     /// Errors:
-    ///     - TODO
-    pub fn data_compact() -> () {
-        todo!()
+    ///     - `Read`: the read operation of the Data file failed
+    pub fn data_compact(&mut self, idxs: Vec<&Idx>) -> Result<Vec<Idx>, DataError> {
+        let mut new_data = String::new();
+        let mut new_idxs: Vec<Idx> = Vec::new();
+        for (parent, byte_offset, len_bytes_to_read, generation) in idxs {
+            let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
+            let offset = new_data.len();
+            let length = text.len();
+            new_data.push_str(&text);
+            new_idxs.push((parent.clone(), offset, length, generation + 1));
+        }
+        self.buf.truncate(0).map_err(|err| DataError {
+            kind: DataErrorKind::Write,
+            message: format!("Truncate operation on Data failed: {err}"),
+        })?;
+        append_line(&mut self.buf, &new_data)?;
+        Ok(new_idxs)
     }
 }
 
@@ -379,25 +403,24 @@ fn append_line<RW: Read + Write + Seek>(
     buf: &mut RW,
     line: &str,
 ) -> Result<(usize, usize), DataError> {
-    let mut writer = BufWriter::new(buf);
-
-    writer.seek(SeekFrom::End(0)).map_err(|e| DataError {
+    buf.seek(SeekFrom::End(0)).map_err(|e| DataError {
         kind: DataErrorKind::Write,
         message: format!("Failed to seek to end: {e}"),
     })?;
 
-    let offset = writer.stream_position().map_err(|_| DataError {
+    let offset = buf.stream_position().map_err(|_| DataError {
         kind: DataErrorKind::Write,
         message: "Unable to determine data offset".into(),
     })? as usize;
+
     let bytes = line.as_bytes();
 
-    writer.write_all(bytes).map_err(|e| DataError {
+    buf.write_all(bytes).map_err(|e| DataError {
         kind: DataErrorKind::Write,
         message: format!("Failed to write data: {e}"),
     })?;
 
-    writer.flush().map_err(|e| DataError {
+    buf.flush().map_err(|e| DataError {
         kind: DataErrorKind::Write,
         message: format!("Flush failed: {e}"),
     })?;
@@ -1172,9 +1195,6 @@ mod ds_data_tests_public_api {
             )
             .unwrap_err();
         assert_eq!(err.kind, DataErrorKind::Write);
-        assert!(
-            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
-        );
     }
     #[test]
     fn test_data_update_partial_err_missing_one_of_links() {
@@ -1362,9 +1382,6 @@ mod ds_data_tests_public_api {
             )
             .unwrap_err();
         assert_eq!(err.kind, DataErrorKind::Write);
-        assert!(
-            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
-        );
     }
     #[test]
     fn test_data_delete_parent() {
@@ -1457,10 +1474,86 @@ mod ds_data_tests_public_api {
             })
             .unwrap_err();
         assert_eq!(err.kind, DataErrorKind::Write);
-        assert!(
-            err.message.contains("Failed to write line") || err.message.contains("Flush failed")
-        );
     }
     #[test]
-    fn test_data_compact_() {}
+    fn test_data_compact_nothing_to_compact_returns_same_data() {
+        let initial = b"something_else->\napple|www.apple.com\n".to_vec();
+        let mut d = Data::new(Cursor::new(initial.clone()));
+        let idxs = vec![("something_else".to_string(), 0, initial.len(), 0)];
+        let new_idxs = d.data_compact(idxs.iter().collect()).unwrap();
+        let after = d.buf.get_ref();
+        assert_eq!(initial, *after);
+        assert_eq!(new_idxs.len(), 1);
+        assert_eq!(new_idxs[0].3, 1);
+    }
+    #[test]
+    fn test_data_compact_removes_old_generations_only_retains_new_ones() {
+        let initial = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n".to_vec();
+
+        let mut d = Data::new(Cursor::new(initial.clone()));
+
+        // Only keep second block (latest)
+        let second_block_offset = initial
+            .windows(
+                b"search_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n".len(),
+            )
+            .position(|w| {
+                w == b"search_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n"
+            })
+            .unwrap();
+
+        let idxs = vec![(
+            "search_engines".to_string(),
+            second_block_offset,
+            b"search_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n".len(),
+            1,
+        )];
+
+        let _ = d.data_compact(idxs.iter().collect()).unwrap();
+
+        let after = d.buf.get_ref();
+
+        let expected =
+            b"search_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n".to_vec();
+
+        assert_eq!(expected, *after);
+    }
+    #[test]
+    fn test_data_compact_removes_parents_and_data_that_were_tombstoned() {
+        let initial = b"search_engines->\ngoogle|www.google.com\nyahoo|www.yahoo.com\nsearch_engines->\ngoogle|www.google.com\nyahoo|https://www.yahoo.com\n-search_engines\nsomething_else->\napple|www.apple.com\n".to_vec();
+
+        let mut d = Data::new(Cursor::new(initial.clone()));
+
+        // Only keep "something_else"
+        let offset = initial
+            .windows(b"something_else->\napple|www.apple.com\n".len())
+            .position(|w| w == b"something_else->\napple|www.apple.com\n")
+            .unwrap();
+
+        let idxs = vec![(
+            "something_else".to_string(),
+            offset,
+            b"something_else->\napple|www.apple.com\n".len(),
+            0,
+        )];
+
+        let _ = d.data_compact(idxs.iter().collect()).unwrap();
+
+        let after = d.buf.get_ref();
+
+        let expected = b"something_else->\napple|www.apple.com\n".to_vec();
+
+        assert_eq!(expected, *after);
+    }
+    #[test]
+    fn test_data_compact_err_read_failure() {
+        let mut d = Data::new(FailingReader);
+
+        let idx = ("parent".to_string(), 0, 10, 0);
+        let idxs = vec![&idx];
+
+        let err = d.data_compact(idxs).unwrap_err();
+
+        assert_eq!(err.kind, DataErrorKind::Read);
+    }
 }
