@@ -35,9 +35,7 @@ impl Truncate for File {
 }
 
 pub trait DS {
-    // TODO: add compact func here (should run index_compact first, then pass the compacted Vec<Idx>
-    // to data_compact. Finally, on returned vec of Idx from data compact, update index file with
-    // new values)
+    fn compact(&mut self) -> Result<(), DataStoreError>;
     fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError>;
     fn import(
         &mut self,
@@ -66,6 +64,23 @@ pub struct Datastore<RW: Read + Write + Seek + Truncate> {
 }
 
 impl<RW: Read + Write + Seek + Truncate> DS for Datastore<RW> {
+    // TODO: add tests
+    fn compact(&mut self) -> Result<(), DataStoreError> {
+        // TODO: rework this as its doing unnecessary work
+        // 1. Run data compact (with no index). It will read through file, store what is needed to
+        //    be kept, and produce a remaining Vec<Idx>
+        // 2. idx_compact becomes the write in place. It takes the Vec<Idx> and write that to the
+        //    file
+        // NOTE: old impl
+        // self.i.idx_compact()?;
+        // let idxs = self.i.idx_read_all()?;
+        // let updated_idxs = self.d.data_compact(idxs)?;
+        // self.i.idx_update_in_place(updated_idxs)?;
+        // Ok(())
+        todo!(
+            "Rework the idx_compact and data_compact to use 2 step approach instead. Then add tests"
+        )
+    }
     fn delete(&mut self, parent_entity: &str, link: Option<&str>) -> Result<(), DataStoreError> {
         match (parent_entity, link) {
             (p, None) => {

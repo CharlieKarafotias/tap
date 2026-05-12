@@ -27,6 +27,7 @@ enum IndexType {
 /// Supported operations:
 ///     - Create index(es)
 ///     - Read index
+///     - Read all indices
 ///     - Update index(es)
 ///     - Upsert index(es)
 ///     - Delete index(es)
@@ -288,6 +289,34 @@ impl<RW: Read + Write + Seek + Truncate> Index<RW> {
         }
         Ok(parents)
     }
+    /// Reads all indices from the Index file
+    ///
+    /// Errors:
+    ///     - `Read`: the read operation of the Index file failed
+    pub fn idx_read_all(&mut self) -> Result<Vec<Idx>, IndexError> {
+        let mut reader = BufReader::new(&mut self.buf);
+        reader.seek(SeekFrom::Start(0)).map_err(|e| IndexError {
+            kind: IndexErrorKind::Read,
+            message: format!("Failed to seek to start: {e}"),
+        })?;
+
+        let mut result: Vec<Idx> = vec![];
+
+        for l in reader.lines() {
+            let line = l.map_err(|e| IndexError {
+                kind: IndexErrorKind::Read,
+                message: format!("Line read failed - {e}"),
+            })?;
+
+            match parse_line(&line)? {
+                IndexType::Entry(idx) => {
+                    result.push(idx);
+                }
+                _ => {}
+            }
+        }
+        Ok(result)
+    }
 }
 
 /// Parses Index entry from string representation into the IndexType format
@@ -546,6 +575,66 @@ mod ds_index_tests_public_api {
         let err = idx.idx_read("some_parent").unwrap_err();
         assert_eq!(err.kind, IndexErrorKind::Read);
         assert!(err.message.contains("Line read failed"));
+    }
+    #[test]
+    fn test_idx_read_all_returns_all_entries_and_ignores_tombstones() {
+        let mut idx = Index::new(Cursor::new(
+            b"another_parent|4|5|6\n-another_parent\nsome_parent|1|2|3\nunknown|2|2|2\n".to_vec(),
+        ));
+
+        let result = idx.idx_read_all().unwrap();
+
+        assert_eq!(
+            result,
+            vec![
+                ("another_parent".to_string(), 4, 5, 6),
+                ("some_parent".to_string(), 1, 2, 3),
+                ("unknown".to_string(), 2, 2, 2),
+            ]
+        );
+
+        // ensure no write operation happened
+        let bytes = idx.buf.get_ref();
+        let res = std::str::from_utf8(bytes).unwrap();
+        assert_eq!(
+            res,
+            "another_parent|4|5|6\n-another_parent\nsome_parent|1|2|3\nunknown|2|2|2\n"
+        );
+    }
+
+    #[test]
+    fn test_idx_read_all_empty_returns_empty_vec() {
+        let mut idx = Index::new(Cursor::new(Vec::new()));
+
+        let result = idx.idx_read_all().unwrap();
+
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_idx_read_all_with_read_failure_returns_read_error() {
+        let mut idx = Index::new(FailingReader);
+
+        let err = idx.idx_read_all().unwrap_err();
+
+        assert_eq!(err.kind, IndexErrorKind::Read);
+        assert!(err.message.contains("Line read failed"));
+    }
+
+    #[test]
+    fn test_idx_read_all_with_parse_failure_returns_parse_error() {
+        let mut idx = Index::new(Cursor::new(b"some_parent|1|2|3\ninvalid|1|2|b\n".to_vec()));
+
+        let expected = IndexError {
+            kind: IndexErrorKind::Parse,
+            message:
+                "Expected fourth part of Index entry to be a positive number. Received line invalid|1|2|b"
+                    .to_string(),
+        };
+
+        let err = idx.idx_read_all().unwrap_err();
+
+        assert_eq!(err, expected);
     }
     #[test]
     fn test_update_index_appends_to_end() {

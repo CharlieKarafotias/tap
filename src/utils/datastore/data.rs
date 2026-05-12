@@ -309,11 +309,11 @@ impl<RW: Read + Write + Seek + Truncate> Data<RW> {
     ///
     /// Errors:
     ///     - `Read`: the read operation of the Data file failed
-    pub fn data_compact(&mut self, idxs: Vec<&Idx>) -> Result<Vec<Idx>, DataError> {
+    pub fn data_compact(&mut self, idxs: Vec<Idx>) -> Result<Vec<Idx>, DataError> {
         let mut new_data = String::new();
         let mut new_idxs: Vec<Idx> = Vec::new();
         for (parent, byte_offset, len_bytes_to_read, generation) in idxs {
-            let text = read_segment(&mut self.buf, *byte_offset, *len_bytes_to_read)?;
+            let text = read_segment(&mut self.buf, byte_offset, len_bytes_to_read)?;
             let offset = new_data.len();
             let length = text.len();
             new_data.push_str(&text);
