@@ -1,42 +1,65 @@
-use crate::commands::update::Update;
-use crate::commands::{Command, CommandResult};
-use crate::commands::{
-    add::Add, delete::Delete, export::Export, help::Help, here::Here, import::Import, init::Init,
-    parent_entity::ParentEntity, show::Show, tui::Tui, upsert::Upsert, version::Version,
-};
-use std::env;
+use clap::{Parser, Subcommand};
+use clap_complete::engine::{ArgValueCompleter, CompletionCandidate};
 
-/// Collects command-line arguments, skipping the first argument (the program name).
-///
-/// # Returns
-///
-/// A vector of strings containing the command-line arguments provided after the program name.
-pub fn collect_args() -> Vec<String> {
-    env::args().skip(1).collect()
+#[derive(Debug, Parser)]
+#[command(name = "tap")]
+pub(super) struct Cli {
+    #[command(subcommand)]
+    command: Mode,
 }
 
-// TODO: add tests for these entry see CLI book: https://rust-cli.github.io/book/tutorial/testing.html
-pub fn run(args: Vec<String>) -> Result<CommandResult, String> {
-    match args.len() {
-        0 => Help::default().run(args),
-        _ => match args[0].as_str() {
-            // General:
-            "--help" => Help::default().run(Vec::from(&args[1..])),
-            "-v" | "--version" => Version::default().run(Vec::from(&args[1..])),
-            // Utilities:
-            "--update" => Update::default().run(Vec::from(&args[1..])),
-            "--tui" => Tui::default().run(Vec::from(&args[1..])),
-            "-i" | "--init" => Init::default().run(Vec::from(&args[1..])),
-            "--import" => Import::default().run(Vec::from(&args[1..])),
-            "--export" => Export::default().run(Vec::from(&args[1..])),
-            // Adding, Updating, and Deleting Links:
-            "-a" | "--add" => Add::default().run(Vec::from(&args[1..])),
-            "-d" | "--delete" => Delete::default().run(Vec::from(&args[1..])),
-            "-s" | "--show" => Show::default().run(Vec::from(&args[1..])),
-            "-u" | "--upsert" => Upsert::default().run(Vec::from(&args[1..])),
-            // Opening links:
-            "here" => Here::default().run(Vec::from(&args[1..])),
-            _parent_entity => ParentEntity::default().run(Vec::from(&args[..])),
-        },
-    }
+#[derive(Debug, Subcommand)]
+enum Mode {
+    // TODO: will need to add something like the following for dynamic completion of the paths
+    // #[arg(add = clap_complete::ArgValueCompleter::new(completer))]
+    #[command(visible_alias = "o")]
+    /// Open stored link(s)
+    Open {
+        /// Link path, e.g. search-engines/google
+        path: String,
+    },
+
+    #[command(visible_alias = "a")]
+    /// Add a stored link
+    Add {
+        /// Link path, e.g. search-engines/google
+        path: String,
+        /// URL to store
+        url: String,
+    },
+
+    #[command(visible_alias = "rm")]
+    /// Remove stored link(s)
+    Remove {
+        /// Link path, e.g. search-engines/google
+        path: String,
+    },
+
+    #[command(visible_alias = "ls")]
+    /// List stored paths / link(s)
+    List {
+        /// Link path, e.g. search-engines/google
+        path: Option<String>,
+    },
+
+    #[command(visible_alias = "e")]
+    /// Edit an existing link
+    Edit {
+        /// Link path, e.g. search-engines/google
+        path: String,
+    },
+
+    #[command(visible_alias = "mv")]
+    /// Rename an existing path or link
+    Rename {
+        /// Link path, e.g. search-engines/google
+        path: String,
+        new_name: String,
+    },
+}
+
+// TODO: need to write a custom completer for the path arg
+// https://docs.rs/clap_complete/latest/clap_complete/engine/struct.ArgValueCompleter.html
+fn path_completer(current: &std::ffi::OsStr) -> Vec<CompletionCandidate> {
+    todo!("Implement custom completer for path arg utilizing db");
 }
